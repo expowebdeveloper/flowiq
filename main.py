@@ -372,7 +372,7 @@ def get_full_inbox(
             attachments = []
         else:
             user_email = email if download_attachments else "__dry__"
-            extracted = eDigestxtract_parts(parts, service, "me", msg["id"], user_email)
+            extracted = extract_parts(parts, service, "me", msg["id"], user_email)
             body_text = extracted["body_text"]
             body_html = extracted["body_html"]
             attachments = extracted["attachments"] if download_attachments else []
