@@ -14,7 +14,10 @@ from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from google.auth.transport.requests import Request
 
+from db import init_db, get_session, GmailToken, OAuthVerifier
+
 load_dotenv()
+init_db()
 
 GOOGLE_CLIENT_ID = os.getenv("client_id")
 GOOGLE_CLIENT_SECRET = os.getenv("client_secret")
@@ -50,20 +53,29 @@ SCOPES = [
     "https://www.googleapis.com/auth/userinfo.email",
 ]
 
-TOKENS_DIR = Path("tokens")
-TOKENS_DIR.mkdir(exist_ok=True)
-VERIFIERS_FILE = TOKENS_DIR / "_verifiers.json"
+def _pop_verifier(state: str) -> Optional[str]:
+    session = get_session()
+    try:
+        row = session.get(OAuthVerifier, state)
+        if not row:
+            return None
+        code_verifier = row.code_verifier
+        session.delete(row)
+        session.commit()
+        return code_verifier
+    finally:
+        session.close()
 
-def _load_verifiers() -> dict:
-    if VERIFIERS_FILE.exists():
-        try:
-            return json.loads(VERIFIERS_FILE.read_text())
-        except Exception:
-            return {}
-    return {}
 
-def _save_verifiers(v: dict):
-    VERIFIERS_FILE.write_text(json.dumps(v))
+def _save_verifier(state: str, code_verifier: str):
+    session = get_session()
+    try:
+        session.merge(OAuthVerifier(state=state, code_verifier=code_verifier))
+        session.commit()
+    finally:
+        session.close()
+
+
 ATTACHMENTS_DIR = Path("attachments")
 ATTACHMENTS_DIR.mkdir(exist_ok=True)
 
@@ -84,23 +96,29 @@ SUPPORTED_MIME_TYPES = {
 }
 
 
-def get_token_path(email: str) -> Path:
-    return TOKENS_DIR / f"{email.replace('@', '_at_')}.json"
-
-
 def get_credentials(email: str) -> Optional[Credentials]:
-    token_path = get_token_path(email)
-    if not token_path.exists():
-        return None
-    creds = Credentials.from_authorized_user_file(str(token_path), SCOPES)
-    if creds and creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-        token_path.write_text(creds.to_json())
-    return creds if creds and creds.valid else None
+    session = get_session()
+    try:
+        row = session.get(GmailToken, email)
+        if not row:
+            return None
+        creds = Credentials.from_authorized_user_info(json.loads(row.credentials_json), SCOPES)
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+            row.credentials_json = creds.to_json()
+            session.commit()
+        return creds if creds and creds.valid else None
+    finally:
+        session.close()
 
 
 def save_credentials(email: str, creds: Credentials):
-    get_token_path(email).write_text(creds.to_json())
+    session = get_session()
+    try:
+        session.merge(GmailToken(email=email, credentials_json=creds.to_json()))
+        session.commit()
+    finally:
+        session.close()
 
 
 def build_gmail_service(email: str):
@@ -177,9 +195,7 @@ def link_email(email: str = Query(..., description="Gmail address to link")):
     ).rstrip(b"=").decode()
 
     state = email
-    verifiers = _load_verifiers()
-    verifiers[state] = code_verifier
-    _save_verifiers(verifiers)
+    _save_verifier(state, code_verifier)
 
     flow = Flow.from_client_config(
         CLIENT_CONFIG,
@@ -197,14 +213,11 @@ def link_email(email: str = Query(..., description="Gmail address to link")):
     )
     return RedirectResponse(auth_url)
 
-
 @app.get("/auth/callback")
 def auth_callback(code: str, state: str):
     """OAuth callback — saves token for the linked email."""
     try:
-        verifiers = _load_verifiers()
-        code_verifier = verifiers.pop(state, None)
-        _save_verifiers(verifiers)
+        code_verifier = _pop_verifier(state)
 
         flow = Flow.from_client_config(
             CLIENT_CONFIG,
@@ -222,7 +235,7 @@ def auth_callback(code: str, state: str):
         actual_email = user_info.get("email", state)
 
         save_credentials(actual_email, creds)
-        return RedirectResponse(f"http://localhost:5174/?linked=1&email={actual_email}")
+        return RedirectResponse(f"http://localhost:5173/?linked=1&email={actual_email}")
 
     except Exception as e:
         import traceback
@@ -372,7 +385,7 @@ def get_full_inbox(
             attachments = []
         else:
             user_email = email if download_attachments else "__dry__"
-            extracted = eDigestxtract_parts(parts, service, "me", msg["id"], user_email)
+            extracted = extract_parts(parts, service, "me", msg["id"], user_email)
             body_text = extracted["body_text"]
             body_html = extracted["body_html"]
             attachments = extracted["attachments"] if download_attachments else []
@@ -449,6 +462,31 @@ def download_attachment(email: str, filename: str):
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Attachment not found")
     return FileResponse(str(file_path), filename=filename)
+
+
+# ─── Agent Routes ─────────────────────────────────────────────────────────────
+
+class AgentRequest(BaseModel):
+    email: str
+    task: Optional[str] = None  # custom instruction, or leave empty for default
+
+@app.post("/agent/run")
+def run_agent(req: AgentRequest):
+    """Trigger the email agent to read and reply to emails (runs in background via Celery)."""
+    from celery_app import run_email_agent_task
+    job = run_email_agent_task.delay(req.email, req.task)
+    return {"task_id": job.id, "status": "started", "message": "Agent is running in background."}
+
+@app.get("/agent/status/{task_id}")
+def agent_status(task_id: str):
+    """Check the status of a running agent task."""
+    from celery_app import celery
+    job = celery.AsyncResult(task_id)
+    return {
+        "task_id": task_id,
+        "status": job.status,
+        "result": job.result if job.ready() else None,
+    }
 
 
 # ─── Utility ──────────────────────────────────────────────────────────────────
