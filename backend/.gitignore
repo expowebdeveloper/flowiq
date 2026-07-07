@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+.venv/
+env/
+backend/venv/
+
+# Environment variables
+.env
+.env.*
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Database
+*.db
+*.sqlite3
+
+# Python cache
+.pytest_cache/
+.mypy_cache/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+
+# Attachments (if generated)
+attachments/
+
+# Token files
+tokens/
+
+# Celery
+celerybeat-schedule
+
+# Alembic cache
+alembic/__pycache__/
+
+# Coverage
+.coverage
+htmlcov/
