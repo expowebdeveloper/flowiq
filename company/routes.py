@@ -56,7 +56,7 @@ def create_company_page(request: Request):
 @router.post("/create")
 def create_company(
     company_name: str = Form(...),
-    company_type: str = Form(...),
+    company_type: str = Form(""),
 
     website: str = Form(""),
     email: str = Form(""),
@@ -79,6 +79,9 @@ def create_company(
     postal_code: str = Form(""),
 
     description: str = Form(""),
+
+    logo_url: str = Form(""),
+
     tags: str = Form(""),
 
     status: bool = Form(True),
@@ -119,9 +122,10 @@ def create_company(
     )
 
     create_company_service(
-        db,
-        company,
-        logo
+        db=db,
+        company=company,
+        logo=logo,
+        logo_url=logo_url
     )
 
     return JSONResponse(

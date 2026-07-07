@@ -478,10 +478,14 @@
 # app.include_router(recommendation_router)
 
 from fastapi import FastAPI
-
 from db import Base, engine
 from company.models import Company  
 from company.routes import router as company_router
+from company.company_lookup.routes import router as company_lookup_router
+from dashboard.routes import router as dashboard_router
+from fastapi import APIRouter, Request
+from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
 
 Base.metadata.create_all(bind=engine)
 
@@ -490,22 +494,18 @@ app = FastAPI(
     version="1.0.0"
 )
 
-from dashboard.routes import router as dashboard_router
 
 app.include_router(
     dashboard_router,
     tags=["Dashboard"]
 )
 
-from fastapi import APIRouter, Request
-from fastapi.templating import Jinja2Templates
 
 router = APIRouter()
 
 templates = Jinja2Templates(directory="dashboard/templates")
 
 
-from fastapi.staticfiles import StaticFiles
 
 app.mount(
     "/static",
@@ -526,3 +526,5 @@ app.include_router(
     prefix="/companies",
     tags=["Companies"]
 )
+
+app.include_router(company_lookup_router)

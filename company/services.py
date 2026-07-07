@@ -54,12 +54,13 @@ def company_exists(db: Session, company_name: str):
         .filter(Company.company_name == company_name)
         .first()
     )
-
 def create_company_service(
     db: Session,
     company: CompanyCreate,
-    logo: UploadFile | None = None
+    logo: UploadFile | None = None,
+    logo_url: str = ""
 ):
+    print("AI Logo URL =", logo_url)
 
     if company_exists(db, company.company_name):
         raise HTTPException(
@@ -67,7 +68,12 @@ def create_company_service(
             detail="Company already exists."
         )
 
-    logo_filename = save_logo(logo)
+    # If user uploads a logo, save it locally
+    if logo and logo.filename:
+        logo_filename = save_logo(logo)
+    else:
+        # Otherwise use the AI logo URL
+        logo_filename = logo_url
 
     return crud.create_company(
         db=db,
