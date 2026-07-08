@@ -44,6 +44,11 @@ class RecommendedBank(BaseModel):
     total_interest: Optional[float] = None
     total_payment: Optional[float] = None
 
+class RejectedBank(BaseModel):
+    bank_name: str
+    reasons: List[str]
+
 
 class LoanRecommendationResponse(BaseModel):
     recommendations: List[RecommendedBank]
+    rejected_banks: List[RejectedBank] = []

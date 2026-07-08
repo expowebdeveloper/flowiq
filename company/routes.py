@@ -1,18 +1,7 @@
-from fastapi import (
-    APIRouter,
-    Depends,
-    Form,
-    Request,
-    UploadFile,
-    File
-)
-
 from fastapi.responses import JSONResponse
-
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
-
 from db import get_db
 from company.schemas import CompanyCreate, CompanyUpdate
 from company.services import (
@@ -22,6 +11,15 @@ from company.services import (
     update_company_service,
     delete_company_service
 )
+from fastapi import (
+    APIRouter,
+    Depends,
+    Form,
+    Request,
+    UploadFile,
+    File
+)
+
 
 router = APIRouter()
 
@@ -193,9 +191,6 @@ def delete_company(
             "message": "Company deleted successfully."
         }
     )
-from fastapi import APIRouter, Depends, Form, File, UploadFile
-from fastapi.responses import JSONResponse
-from sqlalchemy.orm import Session
 
 @router.post("/{company_id}/edit")
 def update_company(
@@ -234,18 +229,6 @@ def update_company(
     db: Session = Depends(get_db),
 ):
 
-    print("========== UPDATE REQUEST ==========")
-    print("company_name:", company_name)
-    print("company_type:", company_type)
-    print("website:", website)
-    print("email:", email)
-    print("phone:", phone)
-    print("industry:", industry)
-    print("company_size:", company_size)
-    print("tags:", tags)
-    print("status:", status)
-    print("logo:", logo.filename if logo else None)
-    print("===================================")
 
     company = CompanyUpdate(
         company_name=company_name,

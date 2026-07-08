@@ -469,49 +469,62 @@
 #     }
 
 
-
-# from fastapi import FastAPI
-# from loan_recommendation.recommendation import router as recommendation_router
-
-# app = FastAPI()
-
-# app.include_router(recommendation_router)
-
-from fastapi import FastAPI
-from db import Base, engine
-from company.models import Company  
-from company.routes import router as company_router
-from company.company_lookup.routes import router as company_lookup_router
-from dashboard.routes import router as dashboard_router
-from fastapi import APIRouter, Request
+from fastapi import FastAPI, APIRouter, Request
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
+from db import Base, engine
+from company.models import Company
+from dashboard.routes import router as dashboard_router
+from company.routes import router as company_router
+from company.company_lookup.routes import router as company_lookup_router
+from loan_recommendation.routes import router as loan_router
+from loan_recommendation.recommendation import router as recommendation_router
+from loan_recommendation.models import LoanRecommendation
+from loan_recommendation.bank_sync.routes import (
+    router as bank_sync_router
+)
+from loan_recommendation.bank_sync.scheduler import start_scheduler
+from loan_recommendation.bank_management.routes import (
+    router as bank_management_router
+)
+from loan_recommendation.bank_management.loan_policy.routes import (
+    router as loan_policy_router
+)
 
+# ---------------------------------
+# Database
+# ---------------------------------
 Base.metadata.create_all(bind=engine)
 
+
+# ---------------------------------
+# FastAPI App
+# ---------------------------------
 app = FastAPI(
     title="FlowIQ",
     version="1.0.0"
 )
+start_scheduler()
 
-
-app.include_router(
-    dashboard_router,
-    tags=["Dashboard"]
-)
-
-
-router = APIRouter()
-
-templates = Jinja2Templates(directory="dashboard/templates")
-
-
-
+# ---------------------------------
+# Static Files
+# ---------------------------------
 app.mount(
     "/static",
     StaticFiles(directory="static"),
     name="static"
 )
+
+
+# ---------------------------------
+# Dashboard Template
+# ---------------------------------
+router = APIRouter()
+
+templates = Jinja2Templates(
+    directory="dashboard/templates"
+)
+
 
 @router.get("/")
 def dashboard(request: Request):
@@ -521,10 +534,42 @@ def dashboard(request: Request):
         context={}
     )
 
+
+# ---------------------------------
+# Routers
+# ---------------------------------
+app.include_router(
+    dashboard_router,
+    tags=["Dashboard"]
+)
+
 app.include_router(
     company_router,
     prefix="/companies",
     tags=["Companies"]
 )
 
-app.include_router(company_lookup_router)
+app.include_router(
+    company_lookup_router
+)
+
+app.include_router(
+    loan_router,
+    tags=["Loan Recommendation"]
+)
+
+app.include_router(
+    recommendation_router
+)
+
+app.include_router(
+    bank_sync_router
+)
+
+app.include_router(
+    bank_management_router
+)
+
+app.include_router(
+    loan_policy_router
+)

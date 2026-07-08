@@ -1,6 +1,6 @@
 import json
 from ollama import chat
-
+import requests
 
 class AIService:
 
@@ -56,7 +56,7 @@ class AIService:
     {recommendation_data}
     """
 
-    
+
     def generate_explanation(self, customer, recommendations):
 
         prompt = self.build_prompt(
@@ -64,34 +64,63 @@ class AIService:
             recommendations
         )
 
-        print("Calling Ollama...")
-        import time
+        print("=" * 80)
+        print("PROMPT LENGTH:", len(prompt))
+        print("=" * 80)
         
-        start = time.time()
+        last_error = None
 
-        response = chat(
-            model="phi3:mini",
-            messages=[
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ]
+        for attempt in range(3):
+            import time
+
+            print("=" * 80)
+            print("Calling Ollama...")
+            start = time.time()
+
+            print(prompt)
+            print("=" * 100)
+
+            response = requests.post(
+                "http://127.0.0.1:11434/api/chat",
+                json={
+                    "model": "phi3:mini",
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": prompt
+                        }
+                    ],
+                    "stream": False
+                },
+                timeout=120
+            )
+
+            response.raise_for_status()
+
+            content = response.json()["message"]["content"]
+
+            content = (
+                content
+                .replace("```json", "")
+                .replace("```", "")
+                .strip()
+            )
+
+            print(f"\nAttempt {attempt + 1}")
+            print("=" * 80)
+            print(content)
+            print("=" * 80)
+
+            try:
+                return json.loads(content)
+
+            except json.JSONDecodeError as e:
+                last_error = e
+                print(f"Invalid JSON. Retrying... ({attempt + 1}/3)")
+
+        raise ValueError(
+            f"AI returned invalid JSON after 3 attempts.\n{last_error}"
         )
-
-        end = time.time()
-
-        print(f"AI took {end - start:.2f} seconds")
-
-        content = response["message"]["content"]
-
-        print(content)
-
-        content = content.replace("```json", "")
-        content = content.replace("```", "")
-        content = content.strip()
-
-        return json.loads(content)
 
     def merge_ai_response(self, recommendations, ai_response):
 

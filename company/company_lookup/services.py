@@ -1,9 +1,6 @@
 import json
-
 from sqlalchemy.orm import Session
-
 from company.company_lookup import crud
-
 from company.company_lookup.schemas import CompanyLookupCreate
 from company.company_lookup.crawler import crawl_page
 from company.company_lookup.providers.website_provider import get_website_information
@@ -30,6 +27,8 @@ def lookup_company(
     if company:
 
         return {
+
+            "cached": True,
 
             "company_name": company.company_name,
 
@@ -182,5 +181,5 @@ def lookup_company(
         )
 
     )
-
+    result["cached"] = False
     return result

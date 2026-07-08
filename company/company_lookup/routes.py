@@ -1,11 +1,7 @@
-from fastapi import APIRouter
-from fastapi import Query
-from fastapi import Depends
-
-from sqlalchemy.orm import Session
-
 from db import get_db
-
+from fastapi import APIRouter, Query, Depends
+from sqlalchemy.orm import Session
+from company.models import Company
 from company.company_lookup.search import find_official_website
 from company.company_lookup.scraper import download_website
 from company.company_lookup.parser import parse_html
@@ -19,6 +15,20 @@ router = APIRouter(
     tags=["Company Lookup"]
 )
 
+@router.get("/exists")
+def company_exists(
+    company: str,
+    db: Session = Depends(get_db)
+):
+    company_obj = (
+        db.query(Company)
+        .filter(Company.company_name == company)
+        .first()
+    )
+
+    return {
+        "exists": company_obj is not None
+    }
 
 @router.get("/search")
 def search(

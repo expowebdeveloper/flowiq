@@ -1,9 +1,8 @@
 from fastapi import APIRouter, Request, Depends
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
-
-from db import get_db
 from company.models import Company
+from db import get_db
 
 router = APIRouter()
 

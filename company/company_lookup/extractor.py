@@ -1,5 +1,7 @@
 import re
 
+import phonenumbers
+from phonenumbers import PhoneNumberMatcher
 
 EMAIL_REGEX = r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"
 PHONE_REGEX = r"(?:\+?\d[\d\s().-]{7,}\d)"
@@ -14,35 +16,32 @@ def extract_emails(text):
 
     return sorted(list(set(emails)))
 
-
 def extract_phones(text):
 
-    phones = re.findall(
-        PHONE_REGEX,
-        text
-    )
+    phones = []
 
-    cleaned = []
+    try:
 
-    for phone in phones:
+        for match in PhoneNumberMatcher(text, None):
 
-        digits = re.sub(r"\D", "", phone)
+            number = match.number
 
-        if len(digits) < 8:
-            continue
+            # Accept only valid numbers
+            if not phonenumbers.is_valid_number(number):
+                continue
 
-        if len(digits) > 15:
-            continue
+            formatted = phonenumbers.format_number(
+                number,
+                phonenumbers.PhoneNumberFormat.INTERNATIONAL
+            )
 
-        if "." in phone:
-            continue
+            phones.append(formatted)
 
-        if len(digits) < 10:
-            continue
+    except Exception as e:
 
-        cleaned.append(phone.strip())
+        print(e)
 
-    return sorted(list(set(cleaned)))
+    return sorted(list(set(phones)))
 
 
 def extract_social_links(links):

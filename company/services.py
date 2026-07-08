@@ -1,10 +1,8 @@
 import os
 import uuid
 import shutil
-
 from fastapi import HTTPException, UploadFile
 from sqlalchemy.orm import Session
-
 from company import crud
 from company.models import Company
 from company.schemas import CompanyCreate, CompanyUpdate
@@ -60,7 +58,6 @@ def create_company_service(
     logo: UploadFile | None = None,
     logo_url: str = ""
 ):
-    print("AI Logo URL =", logo_url)
 
     if company_exists(db, company.company_name):
         raise HTTPException(

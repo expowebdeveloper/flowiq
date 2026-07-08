@@ -1,5 +1,4 @@
 from sqlalchemy.orm import Session
-
 from company.models import Company
 from company.schemas import CompanyCreate, CompanyUpdate
 

@@ -1,6 +1,11 @@
 import json
 from loan_recommendation.ai_service import AIService
 from loan_recommendation.emi_service import EMIService
+from loan_recommendation.crud import (
+    get_saved_recommendation,
+    save_recommendation,
+    get_eligible_banks
+)
 
 class ValidationService:
 
@@ -51,67 +56,156 @@ class ValidationService:
 
 class EligibilityService:
 
-    def get_eligible_banks(self, request):
+    def get_eligible_banks(self, db, request):
         """
         Returns all banks for which the customer is eligible.
         """
 
-        with open("loan_recommendation/banks.json", "r") as file:
-            banks = json.load(file)
+        banks = get_eligible_banks(
+            db=db,
+            loan_type=request.loan_type,
+            cibil=request.credit_score,
+            income=request.monthly_income,
+            loan_amount=request.loan_amount
+        )
+
+        print("=" * 80)
+        print(f"Total banks fetched from database: {len(banks)}")
+        print(banks)
+        print("=" * 80)
 
         eligible_banks = []
+        rejected_banks = []
 
+        print("=" * 80)
+        print("REQUEST VALUES")
+        print("Property Type:", repr(request.property_type))
+        print("Employment Type:", repr(request.employment_type))
+        print("Loan Type:", repr(request.loan_type))
+        print("=" * 80)
         for bank in banks:
+            print(f"\nChecking Bank: {bank['bank_name']}")
+            reasons = []
 
             # Loan type check
             if request.loan_type.lower() != bank["loan_product"].lower():
+                print("❌ Loan Type Failed")
                 continue
 
             # Credit score check
             if request.credit_score < bank["min_credit_score"]:
-                continue
 
-            # Monthly income check
+                print("❌ Credit Score Failed")
+
+                reasons.append(
+                    f"Minimum credit score required is {bank['min_credit_score']}. "
+                    f"Your score is {request.credit_score}."
+                )
+
             if request.monthly_income < bank["min_monthly_income"]:
-                continue
+
+                print("❌ Monthly Income Failed")
+
+                reasons.append(
+                    f"Minimum monthly income required is ₹{bank['min_monthly_income']:,.0f}. "
+                    f"Your income is ₹{request.monthly_income:,.0f}."
+                )
 
             # Maximum loan amount check
             if request.loan_amount > bank["max_loan_amount"]:
-                continue
+
+                print("❌ Loan Amount Failed")
+
+                reasons.append(
+                    f"Maximum loan amount is ₹{bank['max_loan_amount']:,.0f}. "
+                    f"You requested ₹{request.loan_amount:,.0f}."
+                )
 
             # Loan-to-Value (LTV) check
             ltv = (request.loan_amount / request.property_value) * 100
 
             if ltv > bank["max_ltv"]:
-                continue
+
+                print("❌ LTV Failed")
+
+                reasons.append(
+                    f"Loan-to-Value (LTV) is {ltv:.2f}%. "
+                    f"Maximum allowed is {bank['max_ltv']}%."
+                )
 
             # Age Check
             if request.age < bank["min_age"] or request.age > bank["max_age"]:
-                continue
+
+                print("❌ Age Failed")
+
+                reasons.append(
+                    f"Eligible age is {bank['min_age']} to {bank['max_age']} years. "
+                    f"Your age is {request.age} years."
+                )
 
             # Employment Type Check
             if request.employment_type not in bank["employment_types"]:
-                continue
+
+                print("❌ Employment Type Failed")
+
+                reasons.append(
+                    f"This bank accepts only {', '.join(bank['employment_types'])}. "
+                    f"You selected '{request.employment_type}'."
+                )
 
             # Work Experience Check
             if request.work_experience_years < bank["minimum_work_experience_years"]:
-                continue
+
+                print("❌ Work Experience Failed")
+
+                reasons.append(
+                    f"Minimum work experience required is "
+                    f"{bank['minimum_work_experience_years']} years. "
+                    f"You have {request.work_experience_years} years."
+                )
 
             # Property Type Check
+            print("User Property Type :", repr(request.property_type))
+            print("Bank Property Types:", bank["property_types"])
             if request.property_type not in bank["property_types"]:
-                continue
+
+                print("❌ Property Type Failed")
+
+                reasons.append(
+                    f"This bank supports only "
+                    f"{', '.join(bank['property_types'])}. "
+                    f"You selected '{request.property_type}'."
+                )
 
 
             # FOIR Check
             foir = (request.existing_emi / request.monthly_income) * 100
 
             if foir > bank["maximum_foir"]:
-                continue
 
+                print("❌ FOIR Failed")
+
+                reasons.append(
+                    f"FOIR is {foir:.2f}%. "
+                    f"Maximum allowed is {bank['maximum_foir']}%."
+                )
+
+            if reasons:
+
+                rejected_banks.append({
+                    "bank_name": bank["bank_name"],
+                    "reasons": reasons
+                })
+
+                continue
             # Customer is eligible
+            print("✅ Eligible")
             eligible_banks.append(bank)
 
-        return eligible_banks
+        return {
+            "eligible_banks": eligible_banks,
+            "rejected_banks": rejected_banks
+        }
 
 
 class RankingService:
@@ -164,26 +258,56 @@ class RecommendationService:
         self.ai_service = AIService()
         self.emi_service = EMIService()
 
-    def recommend(self, request):
+    def recommend(self, db, request):
 
-        print("1. Validation")
         self.validation_service.validate(request)
+        saved = None
 
-        print("2. Eligibility")
-        eligible_banks = self.eligibility_service.get_eligible_banks(request)
+        # saved = get_saved_recommendation(
+        #     db,
+        #     request
+        # )
 
-        print("3. Ranking")
+        # if saved:
+
+        #     print("Recommendation loaded from database.")
+
+        #     return json.loads(saved.response)
+
+        eligibility_result = self.eligibility_service.get_eligible_banks(
+            db,
+            request
+        )
+
+        eligible_banks = eligibility_result["eligible_banks"]
+
+        rejected_banks = eligibility_result["rejected_banks"]
+
         ranked_banks = self.ranking_service.rank_banks(
             eligible_banks,
             request
         )
 
+        if not eligible_banks:
+
+            return {
+                "recommendations": [],
+                "rejected_banks": rejected_banks
+            }
+
         # Top 5 Banks
         top_banks = ranked_banks[:5]
 
-        print("4. Calculating EMI")
+        print("=" * 80)
+        print("TOP BANKS")
+        print(top_banks)
+        print("=" * 80)
+
 
         for bank in top_banks:
+
+            print("=" * 80)
+            print("Calculating EMI for:", bank["bank_name"])
 
             emi = self.emi_service.calculate_emi(
                 loan_amount=request.loan_amount,
@@ -191,22 +315,52 @@ class RecommendationService:
                 tenure_years=bank["max_tenure"]
             )
 
+            print("EMI Result:", emi)
+
             bank.update(emi)
 
-        print("5. Calling AI")
 
-        ai_response = self.ai_service.generate_explanation(
-            request,
-            top_banks
-        )
+        try:
 
-        print("6. AI Returned")
+            ai_response = self.ai_service.generate_explanation(
+                request,
+                top_banks
+            )
+
+        except Exception as e:
+
+            print(f"AI Error: {e}")
+
+            ai_response = {
+                "recommendations": [
+                    {
+                        "bank_name": bank["bank_name"],
+                        "approval_probability": "Unknown",
+                        "reason": "AI explanation unavailable.",
+                        "advantages": [],
+                        "disadvantages": []
+                    }
+                    for bank in top_banks
+                ]
+            }
 
         final_response = self.ai_service.merge_ai_response(
             top_banks,
             ai_response
         )
 
-        print("7. Merge Completed")
+        save_recommendation(
+            db,
+            request,
+            final_response
+        )
 
-        return final_response
+        print("=" * 80)
+        print("FINAL RESPONSE")
+        print(final_response)
+        print("=" * 80)
+
+        return {
+            "recommendations": final_response,
+            "rejected_banks": rejected_banks
+        }
