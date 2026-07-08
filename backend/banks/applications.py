@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from typing import Optional
 
@@ -28,7 +29,7 @@ def _serialize(app: LoanApplication, documents: list[LoanApplicationDocument]) -
         "status": app.status,
         "created_at": app.created_at.isoformat() if app.created_at else None,
         "documents": [
-            {"id": d.id, "filename": d.filename, "content_type": d.content_type,
+            {"id": d.id, "filename": d.filename, "content_type": d.content_type, "label": d.label,
              "download_url": f"/loan-applications/{app.id}/documents/{d.id}"}
             for d in documents
         ],
@@ -43,11 +44,25 @@ async def submit_loan_application(
     applicant_email: Optional[str] = Form(None),
     notes: Optional[str] = Form(None),
     documents: list[UploadFile] = File(default=[]),
+    document_labels: Optional[str] = Form(None),
     current_user: dict = Depends(require_broker),
 ):
-    """Broker submits a loan application for a specific bank + loan type, with supporting documents."""
+    """Broker submits a loan application for a specific bank + loan type, with supporting documents.
+
+    document_labels is a JSON array of strings, parallel to documents, naming which
+    required document (e.g. "PAN card") each uploaded file satisfies.
+    """
     if len(documents) > MAX_DOCUMENTS:
         raise HTTPException(status_code=400, detail=f"Too many documents (max {MAX_DOCUMENTS})")
+
+    labels: list[Optional[str]] = []
+    if document_labels:
+        try:
+            labels = json.loads(document_labels)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="document_labels must be a JSON array")
+        if not isinstance(labels, list):
+            raise HTTPException(status_code=400, detail="document_labels must be a JSON array")
 
     session = get_session()
     try:
@@ -73,18 +88,20 @@ async def submit_loan_application(
         app_dir.mkdir(exist_ok=True)
 
         saved_documents = []
-        for upload in documents:
+        for index, upload in enumerate(documents):
             if not upload.filename:
                 continue
             data = await upload.read()
             if len(data) > MAX_DOCUMENT_SIZE:
                 raise HTTPException(status_code=400, detail=f"'{upload.filename}' exceeds max size of 15MB")
 
+            label = labels[index] if index < len(labels) else None
             doc = LoanApplicationDocument(
                 application_id=application.id,
                 filename=upload.filename,
                 saved_path="",
                 content_type=upload.content_type,
+                label=label,
             )
             session.add(doc)
             session.flush()
