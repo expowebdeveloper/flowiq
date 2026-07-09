@@ -45,7 +45,11 @@ backend/
   keeping the AI-specific code (LLM client, prompt, Aadhaar heuristics) isolated and swappable.
 - **banks/** — a separate business domain (loan rate data entered by brokers, and loan
   applications submitted with documents) that the agent's tools read from, but which doesn't
-  itself touch Gmail.
+  itself touch Gmail. `constants.py` also has `parse_required_documents()`, which splits a
+  bank's freeform `required_documents` text into a checklist (`required_documents_list`) so the
+  apply form can render one upload field per required document instead of a single generic
+  dropzone. Each uploaded `LoanApplicationDocument` stores a `label` recording which checklist
+  item it satisfies.
 
 ## End-to-end flow
 
@@ -77,7 +81,10 @@ backend/
 4. **Brokers manage their own loan data** — separately from the agent, brokers use the
    `banks/` endpoints to maintain which loan categories they offer, the interest-rate/document
    data per bank, and to submit/track loan applications directly (not just ones created by the
-   agent).
+   agent). When applying, the bank's freeform required-documents text is parsed into a checklist
+   (`required_documents_list`) so the frontend can present one upload field per document (e.g.
+   PAN card, salary slips) instead of one generic multi-file dropzone; each uploaded file is
+   tagged with the checklist item it satisfies.
 
 ## API Reference
 
@@ -127,9 +134,9 @@ The agent also runs automatically every 60 seconds via Celery Beat (`auto_poll_e
 | DELETE | `/broker/loan-categories/{category_id}` | Deactivate a loan category |
 | POST | `/bank-loan-rates/bank` | Add one bank's rate/requirements entry for a loan type |
 | POST | `/bank-loan-rates` | Bulk upsert multiple bank rate entries |
-| GET | `/bank-loan-rates?bank_name=&loan_type=` | **Public** — list stored bank rate/requirement data |
-| POST | `/loan-applications` | Submit a loan application with supporting documents (multipart form) |
-| GET | `/loan-applications` | List the current broker's submitted applications |
+| GET | `/bank-loan-rates?bank_name=&loan_type=` | **Public** — list stored bank rate/requirement data. Each rate includes both the raw `required_documents` text and a parsed `required_documents_list` (freeform text split into a document checklist), used by the frontend to render one upload field per required document |
+| POST | `/loan-applications` | Submit a loan application with supporting documents (multipart form: `bank_loan_rate_id`, `applicant_name`, `applicant_phone`, optional `applicant_email`/`notes`, repeated `documents` files, and `document_labels` — a JSON array parallel to `documents` naming which required document, e.g. `"PAN card"`, each file satisfies) |
+| GET | `/loan-applications` | List the current broker's submitted applications (each document includes its `label`) |
 | GET | `/loan-applications/{application_id}/documents/{document_id}` | Download a document attached to an application |
 
 ### Utility
@@ -147,6 +154,7 @@ pip install -r requirements.txt
 
 cp .env.example .env   # then fill in client_id, client_secret, GROQ_API_KEY, DATABASE_URL
 
+alembic upgrade head                 # apply DB migrations
 uvicorn main:app --reload            # API server
 celery -A celery_app worker -B       # agent worker + 60s auto-poll scheduler (needs Redis)
 ```
@@ -159,3 +167,4 @@ Required environment variables (`.env`):
 | `GROQ_API_KEY` | Groq API key powering the email agent's LLM (`llama-3.3-70b-versatile`) |
 | `DATABASE_URL` | Postgres connection string |
 | `JWT_SECRET` | Secret used to sign broker login tokens (defaults to an insecure dev value) |
+np,m

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from auth import require_broker
 from db import BankLoanRate, get_session
 
-from .constants import LOAN_TYPES
+from .constants import LOAN_TYPES, parse_required_documents
 from .schemas import BankLoanRateEntry, BankLoanRatesBulkRequest
 
 router = APIRouter(prefix="/bank-loan-rates", tags=["loan-rates"])
@@ -117,7 +117,9 @@ def list_bank_loan_rates(
                 {
                     "id": r.id, "bank_name": r.bank_name, "loan_type": r.loan_type,
                     "interest_rate": r.interest_rate, "details": r.details,
-                    "required_documents": r.required_documents, "source_url": r.source_url,
+                    "required_documents": r.required_documents,
+                    "required_documents_list": parse_required_documents(r.required_documents),
+                    "source_url": r.source_url,
                     "updated_at": r.updated_at.isoformat() if r.updated_at else None,
                 }
                 for r in rows

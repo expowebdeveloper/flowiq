@@ -95,6 +95,7 @@ class LoanApplicationDocument(Base):
     filename = Column(String, nullable=False)
     saved_path = Column(String, nullable=False)
     content_type = Column(String, nullable=True)
+    label = Column(String, nullable=True)  # which required document this satisfies, e.g. "PAN card"
     uploaded_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
 
