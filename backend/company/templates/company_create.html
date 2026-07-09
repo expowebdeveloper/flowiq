@@ -89,6 +89,11 @@
                                             class="form-control"
                                             placeholder="https://example.com">
 
+                                        <input
+                                            type="hidden"
+                                            id="logo-url"
+                                            name="logo_url">
+
                                         <small
                                             id="website-help"
                                             class="text-warning">
@@ -269,6 +274,9 @@ function fillCompanyForm(companyData) {
         logo.src = companyData.logo;
 
         logo.style.display = "block";
+
+        document.getElementById("logo-url").value =
+            companyData.logo;
 
     }
 

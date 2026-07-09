@@ -55,8 +55,19 @@
                                             <td class="ps-4">
                                                 <div class="d-flex align-items-center">
                                                     {% if company.logo %}
-                                                    <img src="{{ company.logo }}" alt="Logo" class="rounded-circle me-3"
-                                                        style="width: 36px; height: 36px; object-fit: cover;">
+                                                    <img
+                                                        src="{{ company.logo }}"
+                                                        alt="Logo"
+                                                        class="rounded-circle me-3"
+                                                        style="
+                                                            width:36px;
+                                                            height:36px;
+                                                            object-fit:contain;
+                                                            object-position:center;
+                                                            background:#fff;
+                                                            border:1px solid #ddd;
+                                                            padding:2px;
+                                                        ">
                                                     {% else %}
                                                     <div class="rounded-circle bg-light border d-flex align-items-center justify-content-center me-3"
                                                         style="width: 36px; height: 36px;">
