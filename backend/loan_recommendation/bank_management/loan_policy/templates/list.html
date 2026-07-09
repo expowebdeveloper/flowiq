@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlowIQ - Bank Policies List</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
+<body>
+
+<div id="toast-container"></div>
+
+    <div class="wrapper">
+        {% include "sidebar.html" %}
+
+        <div class="main">
+            <div class="container-fluid mt-4 px-4">
+                <div id="content-area">
+                    <div class="mb-3">
+                        <a href="/banks/" class="btn btn-light btn-sm"><i class="fa-solid fa-arrow-left me-2"></i>Back
+                            to Banks</a>
+                    </div>
+
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <div>
+                            <h2 class="fw-bold mb-1"><i class="fa-solid fa-file-shield text-primary me-2"></i>Loan
+                                Policies</h2>
+                            <p class="text-muted mb-0">Configure eligibility guidelines, target credit scores, FOIR
+                                caps, and loan parameters for this bank.</p>
+                        </div>
+                        <div>
+                            <a href="/banks/{{ bank_id }}/policies/add" class="btn btn-primary">
+                                <i class="fa-solid fa-plus me-2"></i> Add Policy
+                            </a>
+                        </div>
+                    </div>
+
+                    <div class="card shadow-sm">
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th class="ps-4">Loan Type</th>
+                                            <th>CIBIL Range</th>
+                                            <th>Min Income</th>
+                                            <th>Max Loan</th>
+                                            <th>Interest Rate</th>
+                                            <th>Max LTV</th>
+                                            <th>Max FOIR</th>
+                                            <th class="text-end pe-4">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% if policies %}
+                                        {% for policy in policies %}
+                                        <tr>
+                                            <td class="ps-4">
+                                                <div class="fw-bold text-dark">{{ policy.loan_type }}</div>
+                                                <small class="text-muted">ID: {{ policy.id }}</small>
+                                            </td>
+                                            <td>{{ policy.min_cibil }} - {{ policy.max_cibil }}</td>
+                                            <td>₹{{ "{:,.0f}".format(policy.min_income) if policy.min_income else '0' }}
+                                            </td>
+                                            <td>₹{{ "{:,.0f}".format(policy.max_loan_amount) if policy.max_loan_amount
+                                                else '0' }}</td>
+                                            <td class="fw-bold text-success">{{ policy.interest_rate }}%</td>
+                                            <td>{{ policy.max_ltv }}%</td>
+                                            <td>{{ policy.maximum_foir }}%</td>
+                                            <td class="text-end pe-4">
+                                                <a href="/banks/policies/{{ policy.id }}/edit"
+                                                    class="btn btn-outline-secondary btn-sm me-1">
+                                                    <i class="fa-solid fa-pen-to-square"></i>
+                                                </a>
+                                                <a href="/banks/policies/{{ policy.id }}/delete"
+                                                    class="btn btn-outline-danger btn-sm"
+                                                    onclick="return confirm('Are you sure you want to delete this policy?')">
+                                                    <i class="fa-solid fa-trash"></i>
+                                                </a>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                        {% else %}
+                                        <tr>
+                                            <td colspan="8" class="text-center py-5 text-muted">
+                                                <i class="fa-solid fa-file-invoice fa-3x mb-3 opacity-50"></i>
+                                                <h5>No Policies Configured</h5>
+                                                <p class="small mb-0">Create loan policies to enable matching rules in
+                                                    the AI recommendation loop.</p>
+                                            </td>
+                                        </tr>
+                                        {% endif %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+
+</html>

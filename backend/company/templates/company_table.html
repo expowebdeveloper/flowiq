@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlowIQ - Companies list</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
+<body>
+
+<div id="toast-container"></div>
+
+    <div class="wrapper">
+        {% include "sidebar.html" %}
+
+        <div class="main">
+            <div class="container-fluid mt-4 px-4">
+                <div id="content-area">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <div>
+                            <h2 class="fw-bold mb-1"><i class="fa-solid fa-building text-primary me-2"></i>Companies
+                            </h2>
+                            <p class="text-muted mb-0">Manage registered company entities, view status, metadata, and
+                                crawl websites.</p>
+                        </div>
+                        <div>
+                            <a href="/companies/create" class="btn btn-primary">
+                                <i class="fa-solid fa-plus me-2"></i> Add Company
+                            </a>
+                        </div>
+                    </div>
+
+                    <div class="card shadow-sm">
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th class="ps-4">Company Name</th>
+                                            <th>Industry</th>
+                                            <th>Website</th>
+                                            <th>Incorporation</th>
+                                            <th>Status</th>
+                                            <th class="text-end pe-4">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% if companies %}
+                                        {% for company in companies %}
+                                        <tr>
+                                            <td class="ps-4">
+                                                <div class="d-flex align-items-center">
+                                                    {% if company.logo %}
+                                                    <img src="{{ company.logo }}" alt="Logo" class="rounded-circle me-3"
+                                                        style="width: 36px; height: 36px; object-fit: cover;">
+                                                    {% else %}
+                                                    <div class="rounded-circle bg-light border d-flex align-items-center justify-content-center me-3"
+                                                        style="width: 36px; height: 36px;">
+                                                        <i class="fa-solid fa-building text-secondary small"></i>
+                                                    </div>
+                                                    {% endif %}
+                                                    <div>
+                                                        <div class="fw-bold text-dark">{{ company.company_name }}</div>
+                                                        <small class="text-muted">{{ company.company_type or 'N/A'
+                                                            }}</small>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td>{{ company.industry or 'N/A' }}</td>
+                                            <td>
+                                                {% if company.website %}
+                                                <a href="{{ company.website }}" target="_blank"
+                                                    class="text-decoration-none small text-primary">
+                                                    {{ company.website }} <i
+                                                        class="fa-solid fa-arrow-up-right-from-square ms-1"
+                                                        style="font-size: 0.75rem;"></i>
+                                                </a>
+                                                {% else %}
+                                                <span class="text-muted small">N/A</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>{{ company.incorporation_date or 'N/A' }}</td>
+                                            <td>
+                                                {% if company.status %}
+                                                <span
+                                                    class="badge bg-success-subtle text-success py-1 px-2 border border-success-subtle">Active</span>
+                                                {% else %}
+                                                <span
+                                                    class="badge bg-danger-subtle text-danger py-1 px-2 border border-danger-subtle">Inactive</span>
+                                                {% endif %}
+                                            </td>
+                                            <td class="text-end pe-4">
+                                                <a href="/companies/{{ company.id }}/edit"
+                                                    class="btn btn-outline-secondary btn-sm me-1">
+                                                    <i class="fa-solid fa-pen-to-square"></i>
+                                                </a>
+                                                <button class="btn btn-outline-danger btn-sm"
+                                                    onclick="deleteCompany({{ company.id }})">
+                                                    <i class="fa-solid fa-trash"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                        {% else %}
+                                        <tr>
+                                            <td colspan="6" class="text-center py-5 text-muted">
+                                                <i class="fa-solid fa-folder-open fa-3x mb-3 opacity-50"></i>
+                                                <h5>No Companies Registered</h5>
+                                                <p class="small mb-0">Create companies or run the Company Lookup scraper
+                                                    to populate data.</p>
+                                            </td>
+                                        </tr>
+                                        {% endif %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+
+</html>

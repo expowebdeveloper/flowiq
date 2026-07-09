@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlowIQ - Interactive API Tester</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        .param-row {
+            margin-bottom: 12px;
+        }
+        .form-label-sm {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #475569;
+            margin-bottom: 4px;
+        }
+        .json-editor {
+            font-family: 'Fira Code', monospace;
+            font-size: 0.85rem;
+            background-color: #0f172a;
+            color: #38bdf8;
+            border: 1px solid #1e293b;
+        }
+        .status-badge {
+            font-size: 0.85rem;
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 6px;
+        }
+        .status-badge.success { background-color: rgba(16, 185, 129, 0.15); color: #10b981; }
+        .status-badge.error { background-color: rgba(239, 68, 68, 0.15); color: #ef4444; }
+        .time-badge {
+            font-size: 0.8rem;
+            color: #64748b;
+        }
+        .section-header {
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+            font-weight: 700;
+            color: #1e293b;
+        }
+    </style>
+</head>
+<body>
+
+<div class="wrapper">
+    {% include "sidebar.html" %}
+
+    <div class="main">
+        <div class="container-fluid mt-4 px-4">
+            <div id="content-area">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <div>
+                        <h2 class="fw-bold mb-1 text-slate-800">API Tester Suite</h2>
+                        <p class="text-muted mb-0">Interactively test all FlowIQ backend endpoints, inspect headers, inputs, and JSON responses.</p>
+                    </div>
+                    <button class="btn btn-outline-secondary" onclick="window.location.reload()">
+                        <i class="fa-solid fa-arrows-rotate me-2"></i> Reload Page
+                    </button>
+                </div>
+
+                <!-- Navigation Pills -->
+                <ul class="nav nav-pills nav-pills-custom mb-4 bg-white p-2 rounded-3 shadow-sm" id="api-tabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="lookup-tab" data-bs-toggle="pill" data-bs-target="#lookup-pane" type="button" role="tab">
+                            <i class="fa-solid fa-magnifying-glass-chart me-2"></i>Company Lookup
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="loan-tab" data-bs-toggle="pill" data-bs-target="#loan-pane" type="button" role="tab">
+                            <i class="fa-solid fa-robot me-2"></i>AI Recommendation
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="companies-tab" data-bs-toggle="pill" data-bs-target="#companies-pane" type="button" role="tab">
+                            <i class="fa-solid fa-building-user me-2"></i>Company CRUD
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="banks-tab" data-bs-toggle="pill" data-bs-target="#banks-pane" type="button" role="tab">
+                            <i class="fa-solid fa-landmark me-2"></i>Banks & Policies
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="sync-tab" data-bs-toggle="pill" data-bs-target="#sync-pane" type="button" role="tab">
+                            <i class="fa-solid fa-rotate me-2"></i>Bank Sync
+                        </button>
+                    </li>
+                </ul>
+
+                <div class="tab-content" id="api-tabs-content">
+                    
+                    <!-- 1. COMPANY LOOKUP PANEL -->
+                    <div class="tab-pane fade show active" id="lookup-pane" role="tabpanel">
+                        <div class="section-header">Company Lookup Endpoints</div>
+                        
+                        <!-- Endpoint: Search Website -->
+                        <div class="card endpoint-card mb-3 GET">
+                            <div class="endpoint-header collapsed" data-bs-toggle="collapse" data-bs-target="#collapse-lookup-search">
+                                <div class="d-flex align-items-center">
+                                    <span class="badge-method GET me-3">GET</span>
+                                    <span class="endpoint-path">/company-lookup/search</span>
+                                    <span class="ms-3 text-muted">Find official website URL for a company name</span>
+                                </div>
+                                <i class="fa-solid fa-chevron-down text-muted"></i>
+                            </div>
+                            <div id="collapse-lookup-search" class="collapse">
+                                <div class="card-body bg-light border-top">
+                                    <form onsubmit="runTest(event, '/company-lookup/search', 'GET')">
+                                        <div class="row">
+                                            <div class="col-md-6 param-row">
+                                                <label class="form-label form-label-sm">Query (q) *</label>
+                                                <input type="text" name="q" class="form-control" value="Google" required>
+                                            </div>
+                                        </div>
+                                        <button type="submit" class="btn btn-primary btn-sm mt-2">Send Request</button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Endpoint: Company Exists -->
+                        <div class="card endpoint-card mb-3 GET">
+                            <div class="endpoint-header collapsed" data-bs-toggle="collapse" data-bs-target="#collapse-lookup-exists">
+                                <div class="d-flex align-items-center">
+                                    <span class="badge-method GET me-3">GET</span>
+                                    <span class="endpoint-path">/company-lookup/exists</span>
+                                    <span class="ms-3 text-muted">Check if company exists in local database</span>
+                                </div>
+                                <i class="fa-solid fa-chevron-down text-muted"></i>
+                            </div>
+                            <div id="collapse-lookup-exists" class="collapse">
+                                <div class="card-body bg-light border-top">
+                                    <form onsubmit="runTest(event, '/company-lookup/exists', 'GET')">
+                                        <div class="row">
+                                            <div class="col-md-6 param-row">
+                                                <label class="form-label form-label-sm">Company Name (company) *</label>
+                                                <input type="text" name="company" class="form-control" value="Google" required>
+                                            </div>
+                                        </div>
+                                        <button type="submit" class="btn btn-primary btn-sm mt-2">Send Request</button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Endpoint: Full Lookup & Scraping -->
+                        <div class="card endpoint-card mb-3 GET">
+                            <div class="endpoint-header collapsed" data-bs-toggle="collapse" data-bs-target="#collapse-lookup-full">
+                                <div class="d-flex align-items-center">
+                                    <span class="badge-method GET me-3">GET</span>
+                                    <span class="endpoint-path">/company-lookup/lookup</span>
+                                    <span class="ms-3 text-muted">Full lookup (searches web, scrapes, extracts metadata, saves to db)</span>
+                                </div>
+                                <i class="fa-solid fa-chevron-down text-muted"></i>
+                            </div>
+                            <div id="collapse-lookup-full" class="collapse">
+                                <div class="card-body bg-light border-top">
+                                    <form onsubmit="runTest(event, '/company-lookup/lookup', 'GET')">
+                                        <div class="row">
+                                            <div class="col-md-6 param-row">
+                                                <label class="form-label form-label-sm">Company Name (company) *</label>
+                                                <input type="text" name="company" class="form-control" value="TCS" required>
+                                            </div>
+                                        </div>
+                                        <button type="submit" class="btn btn-primary btn-sm mt-2">Send Request</button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Endpoint: Download Webpage HTML -->
+                        <div class="card endpoint-card mb-3 GET">
+                            <div class="endpoint-header collapsed" data-bs-toggle="collapse" data-bs-target="#collapse-lookup-download">
+                                <div class="d-flex align-items-center">
+                                    <span class="badge-method GET me-3">GET</span>
+                                    <span class="endpoint-path">/company-lookup/download</span>
+                                    <span class="ms-3 text-muted">Download HTML of a target website</span>
+                                </div>
+                                <i class="fa-solid fa-chevron-down text-muted"></i>
+                            </div>
+                            <div id="collapse-lookup-download" class="collapse">
+                                <div class="card-body bg-light border-top">
+                                    <form onsubmit="runTest(event, '/company-lookup/download', 'GET')">
+                                        <div class="row">
+                                            <div class="col-md-8 param-row">
+                                                <label class="form-label form-label-sm">URL *</label>
+                                                <input type="url" name="url" class="form-control" value="https://www.google.com" required>
+                                            </div>
+                                        </div>
+                                        <button type="submit" class="btn btn-primary btn-sm mt-2">Send Request</button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Endpoint: Parse Page -->
+                        <div class="card endpoint-card mb-3 GET">
+                            <div class="endpoint-header collapsed" data-bs-toggle="collapse" data-bs-target="#collapse-lookup-parse">
+                                <div class="d-flex align-items-center">
+                                    <span class="badge-method GET me-3">GET</span>
+                                    <span class="endpoint-path">/company-lookup/parse</span>
+                                    <span class="ms-3 text-muted">Parse page content to plain text and list links</span>
+                                </div>
+                                <i class="fa-solid fa-chevron-down text-muted"></i>
+                            </div>
+                            <div id="collapse-lookup-parse" class="collapse">
+                                <div class="card-body bg-light border-top">
+                                    <form onsubmit="runTest(event, '/company-lookup/parse', 'GET')">
+                                        <div class="row">
+                                            <div class="col-md-8 param-row">
+                                                <label class="form-label form-label-sm">URL *</label>
+                                                <input type="url" name="url" class="form-control" value="https://en.wikipedia.org/wiki/Google" required>
+                                            </div>
+                                        </div>
+                                        <button type="submit" class="btn btn-primary btn-sm mt-2">Send Request</button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Endpoint: Extract Information -->
+                        <div class="card endpoint-card mb-3 GET">
+                            <div class="endpoint-header collapsed" data-bs-toggle="collapse" data-bs-target="#collapse-lookup-extract">
+                                <div class="d-flex align-items-center">
+                                    <span class="badge-method GET me-3">GET</span>
+                                    <span class="endpoint-path">/company-lookup/extract</span>
+                                    <span class="ms-3 text-muted">Extract metadata (structured details) from website text</span>
+                                </div>
+                                <i class="fa-solid fa-chevron-down text-muted"></i>
+                            </div>
+                            <div id="collapse-lookup-extract" class="collapse">
+                                <div class="card-body bg-light border-top">
+                                    <form onsubmit="runTest(event, '/company-lookup/extract', 'GET')">
+                                        <div class="row">
+                                            <div class="col-md-8 param-row">
+                                                <label class="form-label form-label-sm">URL *</label>
+                                                <input type="url" name="url" class="form-control" value="https://en.wikipedia.org/wiki/Tesla,_Inc." required>
+                                            </div>
+                                        </div>
+                                        <button type="submit" class="btn btn-primary btn-sm mt-2">Send Request</button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Endpoint: Crawl Page -->
+                        <div class="card endpoint-card mb-3 GET">
+                            <div class="endpoint-header collapsed" data-bs-toggle="collapse" data-bs-target="#collapse-lookup-crawl">
+                                <div class="d-flex align-items-center">
+                                    <span class="badge-method GET me-3">GET</span>
+                                    <span class="endpoint-path">/company-lookup/crawl</span>
+                                    <span class="ms-3 text-muted">Deep crawl webpage and gather internal links</span>
+                                </div>
+                                <i class="fa-solid fa-chevron-down text-muted"></i>
+                            </div>
+                            <div id="collapse-lookup-crawl" class="collapse">
+                                <div class="card-body bg-light border-top">
+                                    <form onsubmit="runTest(event, '/company-lookup/crawl', 'GET')">
+                                        <div class="row">
+                                            <div class="col-md-8 param-row">
+                                                <label class="form-label form-label-sm">URL *</label>
+                                                <input type="url" name="url" class="form-control" value="https://www.wikipedia.org" required>
+                                            </div>
+                                        </div>
+                                        <button type="submit" class="btn btn-primary btn-sm mt-2">Send Request</button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 2. LOAN RECOMMENDATION PANEL -->
+                    <div class="tab-pane fade" id="loan-pane" role="tabpanel">
+                        <div class="section-header">Loan Recommendation Engine</div>
+
+                        <!-- Endpoint: Get Loan Recommendations -->
+                        <div class="card endpoint-card mb-3 POST">
+                            <div class="endpoint-header collapsed" data-bs-toggle="collapse" data-bs-target="#collapse-loan-recommend">
+                                <div class="d-flex align-items-center">
+                                    <span class="badge-method POST me-3">POST</span>
+                                    <span class="endpoint-path">/loan-recommendation/recommend</span>
+                                    <span class="ms-3 text-muted">Evaluate customer profile and output recommended banks & rates</span>
+                                </div>
+                                <i class="fa-solid fa-chevron-down text-muted"></i>
+                            </div>
+                            <div id="collapse-loan-recommend" class="collapse">
+                                <div class="card-body bg-light border-top">
+                                    <form onsubmit="runTest(event, '/loan-recommendation/recommend', 'POST', true)">
+                                        <div class="mb-3 d-flex justify-content-between align-items-center">
+                                            <span class="text-secondary fw-semibold">Request Body (JSON)</span>
+                                            <button type="button" class="btn btn-outline-primary btn-xs" onclick="fillSampleLoanPayload()">Fill Sample Profile</button>
+                                        </div>
+                                        <textarea id="loan-json-payload" name="json_body" class="form-control json-editor rounded-3 mb-3" rows="12">{}</textarea>
+                                        <button type="submit" class="btn btn-primary btn-sm">Submit Profile Evaluator</button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 3. COMPANY CRUD PANEL -->
+                    <div class="tab-pane fade" id="companies-pane" role="tabpanel">
+                        <div class="section-header">Company CRUD Endpoints</div>
+
+                        <!-- Endpoint: Get all companies -->
+                        <div class="card endpoint-card mb-3 GET">
+                            <div class="endpoint-header collapsed" data-bs-toggle="collapse" data-bs-target="#collapse-company-list">
+                                <div class="d-flex align-items-center">
+                                    <span class="badge-method GET me-3">GET</span>
+                                    <span class="endpoint-path">/companies/</span>
+                                    <span class="ms-3 text-muted">Render company HTML list table</span>
+                                </div>
+                                <i class="fa-solid fa-chevron-down text-muted"></i>
+                            </div>
+                            <div id="collapse-company-list" class="collapse">
+                                <div class="card-body bg-light border-top">
+                                    <p class="text-warning"><i class="fa-solid fa-triangle-exclamation me-1"></i> Note: This is an HTML UI view endpoint. The API tester will load the raw HTML response.</p>
+                                    <form onsubmit="runTest(event, '/companies/', 'GET')">
+                                        <button type="submit" class="btn btn-primary btn-sm">Load HTML Page Content</button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Endpoint: Create Company -->
+                        <div class="card endpoint-card mb-3 POST">
+                            <div class="endpoint-header collapsed" data-bs-toggle="collapse" data-bs-target="#collapse-company-create">
+                                <div class="d-flex align-items-center">
+                                    <span class="badge-method POST me-3">POST</span>
+                                    <span class="endpoint-path">/companies/create</span>
+                                    <span class="ms-3 text-muted">Create a new company in database</span>
+                                </div>
+                                <i class="fa-solid fa-chevron-down text-muted"></i>
+                            </div>
+                            <div id="collapse-company-create" class="collapse">
+                                <div class="card-body bg-light border-top">
+                                    <form onsubmit="runTest(event, '/companies/create', 'POST_FORM')">
+                                        <div class="row g-3">
+                                            <div class="col-md-4">
+                                                <label class="form-label form-label-sm">Company Name *</label>
+                                                <input type="text" name="company_name" class="form-control form-control-sm" value="Acme Corp" required>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label form-label-sm">Company Type</label>
+                                                <input type="text" name="company_type" class="form-control form-control-sm" value="Private Limited">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label form-label-sm">Website</label>
+                                                <input type="text" name="website" class="form-control form-control-sm" value="https://acme.example.com">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label form-label-sm">Email</label>
+                                                <input type="email" name="email" class="form-control form-control-sm" value="contact@acme.example.com">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label form-label-sm">Phone</label>
+                                                <input type="text" name="phone" class="form-control form-control-sm" value="+919876543210">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label form-label-sm">GST Number</label>
+                                                <input type="text" name="gst_number" class="form-control form-control-sm" value="07AAAAA0000A1Z5">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label form-label-sm">Industry</label>
+                                                <input type="text" name="industry" class="form-control form-control-sm" value="Technology">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label form-label-sm">Company Size</label>
+                                                <input type="text" name="company_size" class="form-control form-control-sm" value="50-200">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label form-label-sm">Incorporation Date</label>
+                                                <input type="date" name="incorporation_date" class="form-control form-control-sm" value="2020-01-01">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label form-label-sm">Logo File</label>
+                                                <input type="file" name="logo" class="form-control form-control-sm">
+                                            </div>
+                                            <div class="col-md-8">
+                                                <label class="form-label form-label-sm">Address</label>
+                                                <input type="text" name="address" class="form-control form-control-sm" value="123 Tech Park, Sector 62">
+                                            </div>
+                                        </div>
+                                        <button type="submit" class="btn btn-primary btn-sm mt-3">Create Company</button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Endpoint: Edit Company -->
+                        <div class="card endpoint-card mb-3 POST">
+                            <div class="endpoint-header collapsed" data-bs-toggle="collapse" data-bs-target="#collapse-company-edit">
+                                <div class="d-flex align-items-center">
+                                    <span class="badge-method POST me-3">POST</span>
+                                    <span class="endpoint-path">/companies/{company_id}/edit</span>
+                                    <span class="ms-3 text-muted">Update details of an existing company</span>
+                                </div>
+                                <i class="fa-solid fa-chevron-down text-muted"></i>
+                            </div>
+                            <div id="collapse-company-edit" class="collapse">
+                                <div class="card-body bg-light border-top">
+                                    <form onsubmit="runDynamicRouteTest(event, '/companies/{company_id}/edit', 'POST_FORM')">
+                                        <div class="row g-3 mb-3">
+                                            <div class="col-md-4">
+                                                <label class="form-label form-label-sm">Target Company ID *</label>
+                                                <select name="company_id" class="form-select form-select-sm" required>
+                                                    <option value="">-- Select Company --</option>
+                                                    {% for company in companies %}
+                                                    <option value="{{ company.id }}">{{ company.company_name }} (ID: {{ company.id }})</option>
+                                                    {% endfor %}
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="row g-3">
+                                            <div class="col-md-4">
+                                                <label class="form-label form-label-sm">Company Name *</label>
+                                                <input type="text" name="company_name" class="form-control form-control-sm" value="Updated Company Name" required>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label form-label-sm">Company Type</label>
+                                                <input type="text" name="company_type" class="form-control form-control-sm" value="Public Limited">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label form-label-sm">Website</label>
+                                                <input type="text" name="website" class="form-control form-control-sm" value="https://updated-acme.example.com">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label form-label-sm">GST Number</label>
+                                                <input type="text" name="gst_number" class="form-control form-control-sm" value="07AAAAA0000A1Z5">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label form-label-sm">Industry</label>
+                                                <input type="text" name="industry" class="form-control form-control-sm" value="Energy">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label form-label-sm">Logo File</label>
+                                                <input type="file" name="logo" class="form-control form-control-sm">
+                                            </div>
+                                        </div>
+                                        <button type="submit" class="btn btn-primary btn-sm mt-3">Update Company</button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Endpoint: Delete Company -->
+                        <div class="card endpoint-card mb-3 POST">
+                            <div class="endpoint-header collapsed" data-bs-toggle="collapse" data-bs-target="#collapse-company-delete">
+                                <div class="d-flex align-items-center">
+                                    <span class="badge-method POST me-3">POST</span>
+                                    <span class="endpoint-path">/companies/{company_id}/delete</span>
+                                    <span class="ms-3 text-muted">Delete a company from database</span>
+                                </div>
+                                <i class="fa-solid fa-chevron-down text-muted"></i>
+                            </div>
+                            <div id="collapse-company-delete" class="collapse">
+                                <div class="card-body bg-light border-top">
+                                    <form onsubmit="runDynamicRouteTest(event, '/companies/{company_id}/delete', 'POST')">
+                                        <div class="row">
+                                            <div class="col-md-6 param-row">
+                                                <label class="form-label form-label-sm">Target Company ID *</label>
+                                                <select name="company_id" class="form-select" required>
+                                                    <option value="">-- Select Company to Delete --</option>
+                                                    {% for company in companies %}
+                                                    <option value="{{ company.id }}">{{ company.company_name }} (ID: {{ company.id }})</option>
+                                                    {% endfor %}
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <button type="submit" class="btn btn-danger btn-sm mt-2">Delete Company</button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 4. BANK & LOAN POLICY PANEL -->
+                    <div class="tab-pane fade" id="banks-pane" role="tabpanel">
+                        <div class="section-header">Bank Management & Policies</div>
+
+                        <!-- Endpoint: Create Bank -->
+                        <div class="card endpoint-card mb-3 POST">
+                            <div class="endpoint-header collapsed" data-bs-toggle="collapse" data-bs-target="#collapse-bank-create">
+                                <div class="d-flex align-items-center">
+                                    <span class="badge-method POST me-3">POST</span>
+                                    <span class="endpoint-path">/banks/add</span>
+                                    <span class="ms-3 text-muted">Create a new bank profile</span>
+                                </div>
+                                <i class="fa-solid fa-chevron-down text-muted"></i>
+                            </div>
+                            <div id="collapse-bank-create" class="collapse">
+                                <div class="card-body bg-light border-top">
+                                    <p class="text-secondary small mb-3">Creates a new bank. FastAPIs endpoint redirects to <code>/banks/</code> page on success.</p>
+                                    <form onsubmit="runTest(event, '/banks/add', 'POST_FORM')">
+                                        <div class="row g-3">
+                                            <div class="col-md-4">
+                                                <label class="form-label form-label-sm">Bank Name *</label>
+                                                <input type="text" name="name" class="form-control form-control-sm" value="HDFC Bank" required>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label form-label-sm">Website URL</label>
+                                                <input type="url" name="website" class="form-control form-control-sm" value="https://www.hdfcbank.com">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label form-label-sm">Logo URL</label>
+                                                <input type="text" name="logo" class="form-control form-control-sm" value="https://upload.wikimedia.org/wikipedia/commons/2/28/HDFC_Bank_Logo.svg">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label form-label-sm">Status</label>
+                                                <select name="status" class="form-select form-select-sm">
+                                                    <option value="active">Active</option>
+                                                    <option value="inactive">Inactive</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <button type="submit" class="btn btn-primary btn-sm mt-3">Add Bank</button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Endpoint: Create Loan Policy for Bank -->
+                        <div class="card endpoint-card mb-3 POST">
+                            <div class="endpoint-header collapsed" data-bs-toggle="collapse" data-bs-target="#collapse-policy-create">
+                                <div class="d-flex align-items-center">
+                                    <span class="badge-method POST me-3">POST</span>
+                                    <span class="endpoint-path">/banks/{bank_id}/policies/add</span>
+                                    <span class="ms-3 text-muted">Create a new loan eligibility policy for a bank</span>
+                                </div>
+                                <i class="fa-solid fa-chevron-down text-muted"></i>
+                            </div>
+                            <div id="collapse-policy-create" class="collapse">
+                                <div class="card-body bg-light border-top">
+                                    <form onsubmit="runDynamicRouteTest(event, '/banks/{bank_id}/policies/add', 'POST_FORM')">
+                                        <div class="row g-3 mb-3">
+                                            <div class="col-md-4">
+                                                <label class="form-label form-label-sm">Target Bank ID *</label>
+                                                <select name="bank_id" class="form-select form-select-sm" required>
+                                                    <option value="">-- Select Bank --</option>
+                                                    {% for bank in banks %}
+                                                    <option value="{{ bank.id }}">{{ bank.name }} (ID: {{ bank.id }})</option>
+                                                    {% endfor %}
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="row g-3">
+                                            <div class="col-md-3">
+                                                <label class="form-label form-label-sm">Loan Type *</label>
+                                                <select name="loan_type" class="form-select form-select-sm" required>
+                                                    <option value="Home Loan">Home Loan</option>
+                                                    <option value="Personal Loan">Personal Loan</option>
+                                                    <option value="Business Loan">Business Loan</option>
+                                                    <option value="Car Loan">Car Loan</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label form-label-sm">Min Credit Score (CIBIL) *</label>
+                                                <input type="number" name="min_cibil" class="form-control form-control-sm" value="700" required>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label form-label-sm">Max Credit Score *</label>
+                                                <input type="number" name="max_cibil" class="form-control form-control-sm" value="900" required>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label form-label-sm">Min Monthly Income *</label>
+                                                <input type="number" name="min_income" class="form-control form-control-sm" value="25000" required>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label form-label-sm">Max Loan Amount *</label>
+                                                <input type="number" name="max_loan_amount" class="form-control form-control-sm" value="10000000" required>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label form-label-sm">Interest Rate (%) *</label>
+                                                <input type="number" step="0.01" name="interest_rate" class="form-control form-control-sm" value="8.5" required>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label form-label-sm">Processing Fee *</label>
+                                                <input type="number" step="0.01" name="processing_fee" class="form-control form-control-sm" value="2500" required>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label form-label-sm">Max LTV (%) *</label>
+                                                <input type="number" step="0.1" name="max_ltv" class="form-control form-control-sm" value="80" required>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label form-label-sm">Min Age *</label>
+                                                <input type="number" name="min_age" class="form-control form-control-sm" value="21" required>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label form-label-sm">Max Age *</label>
+                                                <input type="number" name="max_age" class="form-control form-control-sm" value="60" required>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label form-label-sm">Min Experience (Yrs) *</label>
+                                                <input type="number" name="minimum_work_experience_years" class="form-control form-control-sm" value="2" required>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label form-label-sm">Max FOIR (%) *</label>
+                                                <input type="number" step="0.1" name="maximum_foir" class="form-control form-control-sm" value="50" required>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label form-label-sm">Employment Types (Comma Separated) *</label>
+                                                <input type="text" name="employment_types" class="form-control form-control-sm" value="Salaried, Self-Employed" required>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label form-label-sm">Property Types (Comma Separated) *</label>
+                                                <input type="text" name="property_types" class="form-control form-control-sm" value="Residential, Commercial" required>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label form-label-sm">Required Documents *</label>
+                                                <input type="text" name="required_documents" class="form-control form-control-sm" value="PAN Card, Aadhaar Card, Salary Slip, Form 16" required>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label form-label-sm">Min Tenure (Months) *</label>
+                                                <input type="number" name="min_tenure" class="form-control form-control-sm" value="12" required>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label form-label-sm">Max Tenure (Months) *</label>
+                                                <input type="number" name="max_tenure" class="form-control form-control-sm" value="360" required>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label form-label-sm">Prepayment Charges *</label>
+                                                <input type="text" name="prepayment_charges" class="form-control form-control-sm" value="Nil on floating rate" required>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label form-label-sm">Foreclosure Charges *</label>
+                                                <input type="text" name="foreclosure_charges" class="form-control form-control-sm" value="Nil on floating rate" required>
+                                            </div>
+                                            <div class="col-12">
+                                                <label class="form-label form-label-sm">Special Features</label>
+                                                <input type="text" name="special_features" class="form-control form-control-sm" value="Top-up facility available, Custom insurance cover">
+                                            </div>
+                                        </div>
+                                        <button type="submit" class="btn btn-primary btn-sm mt-3">Add Loan Policy</button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 5. BANK SYNC PANEL -->
+                    <div class="tab-pane fade" id="sync-pane" role="tabpanel">
+                        <div class="section-header">Bank Policy Synchronization</div>
+
+                        <!-- Endpoint: Synchronize Banks -->
+                        <div class="card endpoint-card mb-3 POST">
+                            <div class="endpoint-header collapsed" data-bs-toggle="collapse" data-bs-target="#collapse-sync-trigger">
+                                <div class="d-flex align-items-center">
+                                    <span class="badge-method POST me-3">POST</span>
+                                    <span class="endpoint-path">/bank-sync/sync</span>
+                                    <span class="ms-3 text-muted">Manually trigger crawling and policy sync of external banks</span>
+                                </div>
+                                <i class="fa-solid fa-chevron-down text-muted"></i>
+                            </div>
+                            <div id="collapse-sync-trigger" class="collapse">
+                                <div class="card-body bg-light border-top">
+                                    <p class="text-secondary small mb-3">Syncs policy details with the predefined bank data from internal scraper.</p>
+                                    <form onsubmit="runTest(event, '/bank-sync/sync', 'POST')">
+                                        <button type="submit" class="btn btn-success btn-sm">Synchronize Now</button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- API Response Output Panel -->
+                <div class="card shadow-sm border-0 mt-4 mb-5">
+                    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                        <div class="d-flex align-items-center">
+                            <h5 class="mb-0 fw-bold text-slate-800 me-3">Test Console Output</h5>
+                            <span id="response-status" class="status-badge d-none"></span>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <span id="response-time" class="time-badge"></span>
+                            <button class="btn btn-light btn-sm" onclick="clearConsole()">Clear Output</button>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <pre id="response-output" class="response-viewer mb-0">No requests sent yet. Click any API endpoint above and hit "Send Request".</pre>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    function clearConsole() {
+        const consoleEl = document.getElementById('response-output');
+        consoleEl.textContent = 'No requests sent yet. Click any API endpoint above and hit "Send Request".';
+        consoleEl.style.color = '#38bdf8';
+        
+        const statusEl = document.getElementById('response-status');
+        statusEl.className = 'status-badge d-none';
+        
+        const timeEl = document.getElementById('response-time');
+        timeEl.textContent = '';
+    }
+
+    function fillSampleLoanPayload() {
+        const payload = {
+            "customer_name": "Kunal Sharma",
+            "age": 30,
+            "employment_type": "Salaried",
+            "work_experience_years": 5,
+            "monthly_income": 85000.0,
+            "existing_emi": 5000.0,
+            "credit_score": 765,
+            "loan_amount": 2500000.0,
+            "loan_type": "Home Loan",
+            "property_value": 3500000.0,
+            "property_type": "Residential"
+        };
+        document.getElementById('loan-json-payload').value = JSON.stringify(payload, null, 4);
+    }
+
+    // Run when page loads
+    window.addEventListener('DOMContentLoaded', () => {
+        fillSampleLoanPayload();
+    });
+
+    async function runTest(event, path, method, isJson = false) {
+        event.preventDefault();
+        const form = event.target;
+        const submitBtn = form.querySelector('button[type="submit"]');
+        const oldBtnText = submitBtn.innerHTML;
+        
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i> Running...';
+
+        const consoleEl = document.getElementById('response-output');
+        consoleEl.textContent = 'Sending request to ' + path + '...';
+        consoleEl.style.color = '#94a3b8';
+
+        const startTime = performance.now();
+
+        try {
+            let url = path;
+            let options = {
+                method: method === 'POST_FORM' ? 'POST' : method,
+                headers: {}
+            };
+
+            if (method === 'GET') {
+                const params = new URLSearchParams();
+                const inputs = form.querySelectorAll('input, select');
+                inputs.forEach(input => {
+                    if (input.name && input.value) {
+                        params.append(input.name, input.value);
+                    }
+                });
+                const queryString = params.toString();
+                if (queryString) {
+                    url += '?' + queryString;
+                }
+            } else if (isJson) {
+                const jsonText = form.querySelector('textarea[name="json_body"]').value;
+                options.headers['Content-Type'] = 'application/json';
+                options.body = jsonText;
+            } else if (method === 'POST_FORM') {
+                const formData = new FormData(form);
+                options.body = formData;
+                // Don't set Content-Type header when sending FormData, browser does it automatically with boundary.
+            } else if (method === 'POST') {
+                const formData = new FormData(form);
+                // Standard URL Encoded Form or clean body
+                const params = new URLSearchParams();
+                for (const pair of formData.entries()) {
+                    params.append(pair[0], pair[1]);
+                }
+                options.body = params;
+            }
+
+            const response = await fetch(url, options);
+            const endTime = performance.now();
+            const duration = Math.round(endTime - startTime);
+
+            const statusEl = document.getElementById('response-status');
+            statusEl.className = 'status-badge ' + (response.ok ? 'success' : 'error');
+            statusEl.textContent = `${response.status} ${response.statusText}`;
+            statusEl.classList.remove('d-none');
+
+            document.getElementById('response-time').textContent = `Time: ${duration}ms`;
+
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+                const json = await response.json();
+                consoleEl.textContent = JSON.stringify(json, null, 4);
+                consoleEl.style.color = '#38bdf8'; // Blue for JSON
+            } else {
+                const text = await response.text();
+                // Escape HTML characters for raw text rendering
+                consoleEl.textContent = text;
+                consoleEl.style.color = '#a7f3d0'; // Light green for HTML/text
+            }
+        } catch (err) {
+            const statusEl = document.getElementById('response-status');
+            statusEl.className = 'status-badge error';
+            statusEl.textContent = 'Failed';
+            statusEl.classList.remove('d-none');
+            
+            consoleEl.textContent = `Error: ${err.message}`;
+            consoleEl.style.color = '#f87171'; // Red for error
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = oldBtnText;
+        }
+    }
+
+    async function runDynamicRouteTest(event, pathTemplate, method) {
+        event.preventDefault();
+        const form = event.target;
+        const submitBtn = form.querySelector('button[type="submit"]');
+        const oldBtnText = submitBtn.innerHTML;
+        
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i> Running...';
+
+        const consoleEl = document.getElementById('response-output');
+        consoleEl.style.color = '#94a3b8';
+
+        const startTime = performance.now();
+
+        try {
+            // Find all parameters in path (like {company_id} or {bank_id})
+            let url = pathTemplate;
+            const pathMatches = pathTemplate.match(/\{[^}]+\}/g);
+            
+            const formData = new FormData(form);
+            
+            if (pathMatches) {
+                pathMatches.forEach(match => {
+                    const fieldName = match.substring(1, match.length - 1);
+                    const fieldValue = formData.get(fieldName);
+                    if (!fieldValue) {
+                        throw new Error(`Field ${fieldName} is required for path URL.`);
+                    }
+                    url = url.replace(match, fieldValue);
+                    formData.delete(fieldName); // Remove from body if it is part of path
+                });
+            }
+
+            consoleEl.textContent = 'Sending request to ' + url + '...';
+
+            let options = {
+                method: method === 'POST_FORM' ? 'POST' : method,
+                headers: {}
+            };
+
+            if (method === 'POST_FORM') {
+                options.body = formData;
+            } else {
+                const params = new URLSearchParams();
+                for (const pair of formData.entries()) {
+                    params.append(pair[0], pair[1]);
+                }
+                options.body = params;
+            }
+
+            const response = await fetch(url, options);
+            const endTime = performance.now();
+            const duration = Math.round(endTime - startTime);
+
+            const statusEl = document.getElementById('response-status');
+            statusEl.className = 'status-badge ' + (response.ok ? 'success' : 'error');
+            statusEl.textContent = `${response.status} ${response.statusText}`;
+            statusEl.classList.remove('d-none');
+
+            document.getElementById('response-time').textContent = `Time: ${duration}ms`;
+
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+                const json = await response.json();
+                consoleEl.textContent = JSON.stringify(json, null, 4);
+                consoleEl.style.color = '#38bdf8';
+            } else {
+                const text = await response.text();
+                consoleEl.textContent = text;
+                consoleEl.style.color = '#a7f3d0';
+            }
+        } catch (err) {
+            const statusEl = document.getElementById('response-status');
+            statusEl.className = 'status-badge error';
+            statusEl.textContent = 'Failed';
+            statusEl.classList.remove('d-none');
+            
+            consoleEl.textContent = `Error: ${err.message}`;
+            consoleEl.style.color = '#f87171';
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = oldBtnText;
+        }
+    }
+</script>
+</body>
+</html>

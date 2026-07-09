@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlowIQ – {{ company.company_name }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+<div id="toast-container"></div>
+
+<div class="wrapper">
+    {% include "sidebar.html" %}
+
+    <div class="main">
+
+        <nav class="navbar px-4 py-3">
+            <div class="d-flex align-items-center gap-3">
+                <a href="/companies/" class="btn btn-sm btn-outline-secondary">
+                    <i class="fa-solid fa-arrow-left me-1"></i> Companies
+                </a>
+                <h5 class="mb-0 fw-bold text-slate-800">{{ company.company_name }}</h5>
+            </div>
+            <div class="d-flex gap-2">
+                <a href="/companies/{{ company.id }}/edit" class="btn btn-sm btn-outline-primary">
+                    <i class="fa-solid fa-pen-to-square me-1"></i> Edit
+                </a>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteCompany({{ company.id }})">
+                    <i class="fa-solid fa-trash me-1"></i> Delete
+                </button>
+            </div>
+        </nav>
+
+        <div class="container-fluid p-4">
+
+            <!-- Header Card -->
+            <div class="card mb-4 p-4">
+                <div class="d-flex align-items-center gap-4">
+                    {% if company.logo %}
+                        <img src="{{ company.logo }}" alt="Logo"
+                             class="rounded-3" style="width:72px;height:72px;object-fit:contain;border:1px solid #e2e8f0;padding:6px;">
+                    {% else %}
+                        <div class="rounded-3 d-flex align-items-center justify-content-center"
+                             style="width:72px;height:72px;background:#eff6ff;">
+                            <i class="fa-solid fa-building fa-2x" style="color:#3b82f6;"></i>
+                        </div>
+                    {% endif %}
+                    <div>
+                        <h3 class="fw-bold mb-1">{{ company.company_name }}</h3>
+                        <div class="d-flex gap-2 align-items-center flex-wrap">
+                            {% if company.company_type %}
+                            <span class="badge" style="background:rgba(100,116,139,0.1);color:#475569;">
+                                {{ company.company_type }}
+                            </span>
+                            {% endif %}
+                            {% if company.industry %}
+                            <span class="badge" style="background:rgba(59,130,246,0.1);color:#2563eb;">
+                                {{ company.industry }}
+                            </span>
+                            {% endif %}
+                            <span class="badge rounded-pill"
+                                  style="background:rgba(16,185,129,0.12);color:#059669;">
+                                Active
+                            </span>
+                        </div>
+                        {% if company.description %}
+                        <p class="text-muted small mt-2 mb-0">{{ company.description }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-4">
+
+                <!-- General Info -->
+                <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h6 class="mb-0 fw-bold">
+                                <i class="fa-solid fa-circle-info me-2 text-primary"></i>General Info
+                            </h6>
+                        </div>
+                        <div class="card-body p-0">
+                            <table class="table table-sm mb-0">
+                                <tbody>
+                                    <tr>
+                                        <td class="text-muted fw-semibold ps-4" style="width:45%;">Industry</td>
+                                        <td>{{ company.industry or '—' }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="text-muted fw-semibold ps-4">Company Size</td>
+                                        <td>{{ company.company_size or '—' }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="text-muted fw-semibold ps-4">Incorporation Date</td>
+                                        <td>{{ company.incorporation_date or '—' }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="text-muted fw-semibold ps-4">Company Type</td>
+                                        <td>{{ company.company_type or '—' }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Legal & Registration -->
+                <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h6 class="mb-0 fw-bold">
+                                <i class="fa-solid fa-file-shield me-2 text-warning"></i>Legal & Registration
+                            </h6>
+                        </div>
+                        <div class="card-body p-0">
+                            <table class="table table-sm mb-0">
+                                <tbody>
+                                    <tr>
+                                        <td class="text-muted fw-semibold ps-4" style="width:45%;">CIN</td>
+                                        <td><code class="small">{{ company.cin_number or '—' }}</code></td>
+                                    </tr>
+                                    <tr>
+                                        <td class="text-muted fw-semibold ps-4">GST Number</td>
+                                        <td><code class="small">{{ company.gst_number or '—' }}</code></td>
+                                    </tr>
+                                    <tr>
+                                        <td class="text-muted fw-semibold ps-4">PAN Number</td>
+                                        <td><code class="small">{{ company.pan_number or '—' }}</code></td>
+                                    </tr>
+                                    <tr>
+                                        <td class="text-muted fw-semibold ps-4">Reg. Number</td>
+                                        <td><code class="small">{{ company.registration_number or '—' }}</code></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Contact -->
+                <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h6 class="mb-0 fw-bold">
+                                <i class="fa-solid fa-address-book me-2 text-success"></i>Contact
+                            </h6>
+                        </div>
+                        <div class="card-body p-0">
+                            <table class="table table-sm mb-0">
+                                <tbody>
+                                    <tr>
+                                        <td class="text-muted fw-semibold ps-4" style="width:45%;">Website</td>
+                                        <td>
+                                            {% if company.website %}
+                                                <a href="{{ company.website }}" target="_blank"
+                                                   class="text-primary text-decoration-none small">
+                                                    {{ company.website | truncate(40, true, '…') }}
+                                                    <i class="fa-solid fa-arrow-up-right-from-square ms-1" style="font-size:0.7rem;"></i>
+                                                </a>
+                                            {% else %}—{% endif %}
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td class="text-muted fw-semibold ps-4">Email</td>
+                                        <td>{{ company.email or '—' }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="text-muted fw-semibold ps-4">Phone</td>
+                                        <td>{{ company.phone or '—' }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Location -->
+                <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h6 class="mb-0 fw-bold">
+                                <i class="fa-solid fa-location-dot me-2 text-danger"></i>Location
+                            </h6>
+                        </div>
+                        <div class="card-body p-0">
+                            <table class="table table-sm mb-0">
+                                <tbody>
+                                    <tr>
+                                        <td class="text-muted fw-semibold ps-4" style="width:45%;">Address</td>
+                                        <td>{{ company.address or '—' }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="text-muted fw-semibold ps-4">City / State</td>
+                                        <td>
+                                            {{ company.city or '' }}
+                                            {% if company.city and company.state %}, {% endif %}
+                                            {{ company.state or '' }}
+                                            {% if not company.city and not company.state %}—{% endif %}
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td class="text-muted fw-semibold ps-4">Postal / Country</td>
+                                        <td>
+                                            {{ company.postal_code or '' }}
+                                            {% if company.postal_code and company.country %}, {% endif %}
+                                            {{ company.country or '' }}
+                                            {% if not company.postal_code and not company.country %}—{% endif %}
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/static/js/app.js"></script>
+</body>
+</html>

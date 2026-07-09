@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlowIQ - Loan Recommendation</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        .rec-card {
+            border-left: 5px solid #10b981;
+        }
+
+        .reject-card {
+            border-left: 5px solid #ef4444;
+            background-color: #fef2f2;
+        }
+    </style>
+</head>
+
+<body>
+
+<div id="toast-container"></div>
+
+    <div class="wrapper">
+        {% include "sidebar.html" %}
+
+        <div class="main">
+            <div class="container-fluid mt-4 px-4">
+                <div id="content-area">
+                    <h2 class="fw-bold mb-1"><i class="fa-solid fa-robot text-primary me-2"></i>AI Loan Recommendation
+                    </h2>
+                    <p class="text-muted mb-4">Enter customer details to run the AI recommendation engine and evaluate
+                        matched loan policies.</p>
+
+                    <div class="row">
+                        <!-- Left: Form -->
+                        <div class="col-lg-6 mb-4">
+                            <div class="card shadow-sm">
+                                <div class="card-header bg-white py-3">
+                                    <h5 class="mb-0 fw-bold">Customer Profile</h5>
+                                </div>
+                                <div class="card-body">
+                                    <form id="recommendation-form" onsubmit="getRecommendations(event)">
+                                        <div class="row g-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label fw-semibold text-secondary small">Customer
+                                                    Name</label>
+                                                <input type="text" id="customer_name" class="form-control"
+                                                    value="Amit Patel" required>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label fw-semibold text-secondary small">Age</label>
+                                                <input type="number" id="age" class="form-control" value="32" required>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label fw-semibold text-secondary small">Employment
+                                                    Type</label>
+                                                <select id="employment_type" class="form-select" required>
+                                                    <option value="Salaried">Salaried</option>
+                                                    <option value="Self-Employed">Self-Employed</option>
+                                                    <option value="Business Owner">Business Owner</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label fw-semibold text-secondary small">Work
+                                                    Experience (Years)</label>
+                                                <input type="number" id="work_experience_years" class="form-control"
+                                                    value="6" required>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label fw-semibold text-secondary small">Monthly Net
+                                                    Income (₹)</label>
+                                                <input type="number" id="monthly_income" class="form-control"
+                                                    value="95000" required>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label fw-semibold text-secondary small">Existing EMIs
+                                                    (₹)</label>
+                                                <input type="number" id="existing_emi" class="form-control"
+                                                    value="10000" required>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label fw-semibold text-secondary small">Credit Score
+                                                    (CIBIL)</label>
+                                                <input type="number" id="credit_score" class="form-control" value="780"
+                                                    required>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label fw-semibold text-secondary small">Required Loan
+                                                    Amount (₹)</label>
+                                                <input type="number" id="loan_amount" class="form-control"
+                                                    value="4500000" required>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label fw-semibold text-secondary small">Loan
+                                                    Product</label>
+                                                <select id="loan_type" class="form-select" required>
+                                                    <option value="Home Loan">Home Loan</option>
+                                                    <option value="Personal Loan">Personal Loan</option>
+                                                    <option value="Business Loan">Business Loan</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label fw-semibold text-secondary small">Property
+                                                    Market Value (₹)</label>
+                                                <input type="number" id="property_value" class="form-control"
+                                                    value="6000000" required>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label fw-semibold text-secondary small">Property
+                                                    Type</label>
+                                                <select id="property_type" class="form-select" required>
+                                                    <option value="Residential">Residential</option>
+                                                    <option value="Commercial">Commercial</option>
+                                                    <option value="Plot">Plot / Land</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="mt-4">
+                                            <button type="submit" class="btn btn-primary w-100 py-2">
+                                                <i class="fa-solid fa-wand-magic-sparkles me-2"></i> Get Recommendations
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right: Recommendations Output -->
+                        <div class="col-lg-6 mb-4">
+                            <div class="card shadow-sm h-100">
+                                <div
+                                    class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                                    <h5 class="mb-0 fw-bold">Matched Recommendations</h5>
+                                    <span id="status-spinner" class="d-none"><i
+                                            class="fa-solid fa-circle-notch fa-spin text-primary"></i>
+                                        Analyzing...</span>
+                                </div>
+                                <div class="card-body" id="rec-results" style="max-height: 600px; overflow-y: auto;">
+                                    <div class="text-center text-muted py-5">
+                                        <i class="fa-solid fa-robot fa-4x mb-3 opacity-50"></i>
+                                        <h5>No Recommendations Yet</h5>
+                                        <p class="small">Fill the form and click "Get Recommendations" to run matches
+                                            against active bank policies.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        async function getRecommendations(e) {
+            e.preventDefault();
+
+            const resultsContainer = document.getElementById('rec-results');
+            const spinner = document.getElementById('status-spinner');
+
+            spinner.classList.remove('d-none');
+            resultsContainer.innerHTML = '';
+
+            const payload = {
+                customer_name: document.getElementById('customer_name').value,
+                age: parseInt(document.getElementById('age').value),
+                employment_type: document.getElementById('employment_type').value,
+                work_experience_years: parseInt(document.getElementById('work_experience_years').value),
+                monthly_income: parseFloat(document.getElementById('monthly_income').value),
+                existing_emi: parseFloat(document.getElementById('existing_emi').value),
+                credit_score: parseInt(document.getElementById('credit_score').value),
+                loan_amount: parseFloat(document.getElementById('loan_amount').value),
+                loan_type: document.getElementById('loan_type').value,
+                property_value: parseFloat(document.getElementById('property_value').value),
+                property_type: document.getElementById('property_type').value
+            };
+
+            try {
+                const response = await fetch('/loan-recommendation/recommend', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    throw new Error('API server returned error code ' + response.status);
+                }
+
+                const data = await response.json();
+                renderResults(data);
+            } catch (err) {
+                resultsContainer.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fa-solid fa-circle-exclamation me-2"></i><strong>Error running recommendation engine:</strong> ${err.message}
+                </div>
+            `;
+            } finally {
+                spinner.classList.add('d-none');
+            }
+        }
+
+        function renderResults(data) {
+            const container = document.getElementById('rec-results');
+            let html = '';
+
+            if (!data.recommendations || data.recommendations.length === 0) {
+                html += `
+                <div class="alert alert-warning mb-4">
+                    <i class="fa-solid fa-triangle-exclamation me-2"></i>No banks matched the criteria. Check CIBIL, FOIR or Income policies.
+                </div>
+            `;
+            } else {
+                html += `<h6 class="fw-bold mb-3 text-success"><i class="fa-solid fa-circle-check me-2"></i>Matched Banks (${data.recommendations.length})</h6>`;
+                data.recommendations.forEach(rec => {
+                    const advantages = rec.advantages ? rec.advantages.map(a => `<li>${a}</li>`).join('') : '';
+                    const emi = rec.monthly_emi ? rec.monthly_emi.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }) : 'N/A';
+                    const rate = rec.interest_rate ? `${rec.interest_rate}%` : 'N/A';
+
+                    html += `
+                    <div class="card rec-card shadow-sm mb-3">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <div>
+                                    <h5 class="fw-bold mb-0 text-primary">${rec.bank_name}</h5>
+                                    <span class="badge bg-secondary small">${rec.loan_product}</span>
+                                </div>
+                                <div class="text-end">
+                                    <span class="badge bg-success py-2 px-3 fs-6">EMI: ${emi}</span>
+                                </div>
+                            </div>
+                            
+                            <hr class="my-2">
+                            
+                            <div class="row g-2 small mb-2 text-dark">
+                                <div class="col-6"><strong>Interest Rate:</strong> ${rate}</div>
+                                <div class="col-6"><strong>Processing Fee:</strong> ₹${rec.processing_fee}</div>
+                                <div class="col-6"><strong>Max Tenure:</strong> ${rec.max_tenure / 12} Years</div>
+                                <div class="col-6"><strong>Match Score:</strong> ${(rec.score * 100).toFixed(1)}%</div>
+                            </div>
+                            
+                            ${rec.reason ? `<p class="text-muted small mb-2"><strong>AI Summary:</strong> ${rec.reason}</p>` : ''}
+                            
+                            ${advantages ? `
+                                <div class="mt-2 small text-success">
+                                    <strong>Advantages:</strong>
+                                    <ul class="mb-0 ps-3">${advantages}</ul>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+                });
+            }
+
+            if (data.rejected_banks && data.rejected_banks.length > 0) {
+                html += `<h6 class="fw-bold mt-4 mb-3 text-danger"><i class="fa-solid fa-circle-xmark me-2"></i>Rejected / Non-Eligible Banks (${data.rejected_banks.length})</h6>`;
+                data.rejected_banks.forEach(rej => {
+                    const reasonsList = rej.reasons ? rej.reasons.map(r => `<li>${r}</li>`).join('') : '';
+                    html += `
+                    <div class="card reject-card shadow-sm mb-2">
+                        <div class="card-body py-2">
+                            <h6 class="fw-bold mb-1 text-danger">${rej.bank_name}</h6>
+                            <ul class="mb-0 ps-3 small text-muted">${reasonsList}</ul>
+                        </div>
+                    </div>
+                `;
+                });
+            }
+
+            container.innerHTML = html;
+        }
+    </script>
+</body>
+
+</html>

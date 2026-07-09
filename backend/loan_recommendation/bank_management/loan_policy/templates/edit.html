@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlowIQ – Edit Loan Policy</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+<div id="toast-container"></div>
+
+<div class="wrapper">
+    {% include "sidebar.html" %}
+
+    <div class="main">
+
+        <nav class="navbar px-4 py-3">
+            <h5 class="mb-0 fw-bold text-slate-800">
+                <i class="fa-solid fa-pen-to-square me-2 text-primary"></i>Edit Loan Policy
+            </h5>
+            <a href="/banks/{{ policy.bank_id }}/policies" class="btn btn-sm btn-outline-secondary">
+                <i class="fa-solid fa-arrow-left me-1"></i> Back to Policies
+            </a>
+        </nav>
+
+        <div class="container-fluid p-4">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0 fw-bold">Update Policy: {{ policy.loan_type }}</h6>
+                </div>
+                <div class="card-body p-4">
+                    <form action="/banks/policies/{{ policy.id }}/edit" method="post">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label">Loan Type *</label>
+                                <select name="loan_type" class="form-select" required>
+                                    {% for t in ['Home Loan', 'Personal Loan', 'Business Loan', 'Car Loan'] %}
+                                    <option value="{{ t }}" {% if policy.loan_type == t %}selected{% endif %}>{{ t }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Min CIBIL Score *</label>
+                                <input type="number" name="min_cibil" class="form-control"
+                                       value="{{ policy.min_cibil }}" min="300" max="900" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Max CIBIL Score *</label>
+                                <input type="number" name="max_cibil" class="form-control"
+                                       value="{{ policy.max_cibil }}" min="300" max="900" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Min Monthly Income (₹) *</label>
+                                <input type="number" name="min_income" class="form-control"
+                                       value="{{ policy.min_income }}" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Max Loan Amount (₹) *</label>
+                                <input type="number" name="max_loan_amount" class="form-control"
+                                       value="{{ policy.max_loan_amount }}" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Interest Rate (%) *</label>
+                                <input type="number" name="interest_rate" class="form-control"
+                                       step="0.01" value="{{ policy.interest_rate }}" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Processing Fee (₹) *</label>
+                                <input type="number" name="processing_fee" class="form-control"
+                                       step="0.01" value="{{ policy.processing_fee }}" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Max LTV (%) *</label>
+                                <input type="number" name="max_ltv" class="form-control"
+                                       step="0.1" value="{{ policy.max_ltv }}" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Max FOIR (%) *</label>
+                                <input type="number" name="maximum_foir" class="form-control"
+                                       step="0.1" value="{{ policy.maximum_foir }}" required>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Min Age *</label>
+                                <input type="number" name="min_age" class="form-control"
+                                       value="{{ policy.min_age }}" required>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Max Age *</label>
+                                <input type="number" name="max_age" class="form-control"
+                                       value="{{ policy.max_age }}" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Min Work Experience (Years) *</label>
+                                <input type="number" name="minimum_work_experience_years" class="form-control"
+                                       value="{{ policy.minimum_work_experience_years }}" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Min Tenure (Months) *</label>
+                                <input type="number" name="min_tenure" class="form-control"
+                                       value="{{ policy.min_tenure }}" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Max Tenure (Months) *</label>
+                                <input type="number" name="max_tenure" class="form-control"
+                                       value="{{ policy.max_tenure }}" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Employment Types (comma separated) *</label>
+                                <input type="text" name="employment_types" class="form-control"
+                                       value="{{ policy.employment_types }}" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Property Types (comma separated) *</label>
+                                <input type="text" name="property_types" class="form-control"
+                                       value="{{ policy.property_types }}" required>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Required Documents (comma separated) *</label>
+                                <input type="text" name="required_documents" class="form-control"
+                                       value="{{ policy.required_documents }}" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Prepayment Charges *</label>
+                                <input type="text" name="prepayment_charges" class="form-control"
+                                       value="{{ policy.prepayment_charges }}" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Foreclosure Charges *</label>
+                                <input type="text" name="foreclosure_charges" class="form-control"
+                                       value="{{ policy.foreclosure_charges }}" required>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Special Features</label>
+                                <input type="text" name="special_features" class="form-control"
+                                       value="{{ policy.special_features or '' }}"
+                                       placeholder="e.g. Top-up facility, balance transfer...">
+                            </div>
+                        </div>
+                        <div class="mt-4 d-flex gap-2">
+                            <button type="submit" class="btn btn-primary px-4">
+                                <i class="fa-solid fa-save me-2"></i>Update Policy
+                            </button>
+                            <a href="/banks/{{ policy.bank_id }}/policies" class="btn btn-outline-secondary px-4">Cancel</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/static/js/app.js"></script>
+</body>
+</html>
