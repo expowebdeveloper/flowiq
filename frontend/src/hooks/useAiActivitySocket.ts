@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react"
-import { API_BASE_URL } from "@/services/apiClient"
+import { buildWsUrl } from "@/services/apiClient"
 import type { AiActivityEvent } from "@/services/aiActivityService"
 
 /**
@@ -28,9 +28,7 @@ export function useAiActivitySocket(
   useEffect(() => {
     if (!token) return
 
-    const wsUrl = new URL(API_BASE_URL)
-    wsUrl.protocol = wsUrl.protocol === "https:" ? "wss:" : "ws:"
-    wsUrl.pathname = "/agent-activity/ws"
+    const wsUrl = buildWsUrl("/agent-activity/ws")
     wsUrl.searchParams.set("token", token)
 
     const socket = new WebSocket(wsUrl.toString())

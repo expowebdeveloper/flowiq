@@ -21,7 +21,13 @@ load_dotenv()
 
 GOOGLE_CLIENT_ID = os.getenv("client_id")
 GOOGLE_CLIENT_SECRET = os.getenv("client_secret")
-REDIRECT_URI = "http://localhost:8000/auth/callback"
+# Must exactly match the redirect_uri Google is told to send the browser back
+# to, which behind the nginx /api/ proxy is the public https://<host>/api/...
+# URL, not this backend's own root path. Defaults to local dev.
+REDIRECT_URI = os.getenv("OAUTH_REDIRECT_URI", "http://localhost:8000/auth/callback")
+# Where the browser is sent after /auth/callback finishes linking Gmail —
+# the frontend's own origin, not this backend's. Defaults to local Vite dev.
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
 if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
     raise RuntimeError("client_id and client_secret must be set in .env")
@@ -178,7 +184,7 @@ def auth_callback(code: str, state: str):
         finally:
             session.close()
 
-        return RedirectResponse(f"http://localhost:5173/?linked=1&email={actual_email}&token={token}")
+        return RedirectResponse(f"{FRONTEND_URL}/?linked=1&email={actual_email}&token={token}")
 
     except Exception as e:
         import traceback
