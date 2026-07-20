@@ -19,13 +19,15 @@ def verify_password(password: str, password_hash: str) -> bool:
     return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
 
 
-def create_access_token(user_id: str, email: str, role: str) -> str:
+def create_access_token(user_id: str, email: str, role: str, bank_name: Optional[str] = None) -> str:
     payload = {
         "sub": user_id,
         "email": email,
         "role": role,
         "exp": datetime.now(timezone.utc) + timedelta(minutes=JWT_EXPIRE_MINUTES),
     }
+    if bank_name is not None:
+        payload["bank_name"] = bank_name
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
@@ -48,4 +50,10 @@ def get_current_user(authorization: Optional[str] = Header(None)) -> dict:
 def require_broker(user: dict = Depends(get_current_user)) -> dict:
     if user.get("role") != "broker":
         raise HTTPException(status_code=403, detail="Broker role required")
+    return user
+
+
+def require_bank(user: dict = Depends(get_current_user)) -> dict:
+    if user.get("role") != "bank":
+        raise HTTPException(status_code=403, detail="Bank role required")
     return user

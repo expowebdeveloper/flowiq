@@ -1,8 +1,31 @@
 import sys
 import os
+import logging
 
 # ── Path Bootstrap ─────────────────────────────────────────────────────────────
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from logging.handlers import RotatingFileHandler
+
+_LOGS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+os.makedirs(_LOGS_DIR, exist_ok=True)
+
+_log_formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+_console_handler = logging.StreamHandler()
+_console_handler.setFormatter(_log_formatter)
+
+_loan_apply_file_handler = RotatingFileHandler(
+    os.path.join(_LOGS_DIR, "loan_apply.log"), maxBytes=5 * 1024 * 1024, backupCount=3
+)
+_loan_apply_file_handler.setFormatter(_log_formatter)
+
+logging.basicConfig(level=logging.INFO, handlers=[_console_handler])
+
+# loan_apply's logger additionally writes to its own log file, so the full
+# submit -> agent -> send flow can be read start-to-end without console
+# scrollback getting mixed in with every other router's log lines.
+logging.getLogger("loan_apply").addHandler(_loan_apply_file_handler)
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, APIRouter, Request
@@ -15,11 +38,29 @@ from company.models import Company
 from loan_recommendation.models import LoanRecommendation
 
 # Existing Routers (ACO)
-from auth import oauth_router
+from auth import oauth_router, login_router
 from inbound import router as inbound_router
 from outbound import router as outbound_router
 from agents import router as agents_router
-from banks import loan_categories_router, loan_rates_router, loan_applications_router
+from banks import (
+    loan_categories_router,
+    loan_rates_router,
+    loan_applications_router,
+    bank_notifications_router,
+)
+from chat import router as chat_router
+from kyc import kyc_router
+from loan_apply import router as loan_apply_router
+from agent_activity.routes import router as agent_activity_router
+import importlib.util
+_json_routes_spec = importlib.util.spec_from_file_location(
+    "json_verify_routes",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "json/routes.py")
+)
+_json_routes_module = importlib.util.module_from_spec(_json_routes_spec)
+_json_routes_spec.loader.exec_module(_json_routes_module)
+json_verify_router = _json_routes_module.router
+
 
 # New Routers (Loan Recommendation)
 from dashboard.routes import router as dashboard_router
@@ -60,12 +101,19 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 # ── Routers ────────────────────────────────────────────────────────────────────
 # Existing Routers
 app.include_router(oauth_router)
+app.include_router(login_router)
 app.include_router(inbound_router)
 app.include_router(outbound_router)
 app.include_router(agents_router)
 app.include_router(loan_categories_router)
 app.include_router(loan_rates_router)
 app.include_router(loan_applications_router)
+app.include_router(bank_notifications_router)
+app.include_router(chat_router)
+app.include_router(kyc_router)
+app.include_router(json_verify_router)
+app.include_router(loan_apply_router)
+app.include_router(agent_activity_router)
 
 # Loan Recommendation / FlowIQ Routers
 app.include_router(dashboard_router,       tags=["Dashboard"])

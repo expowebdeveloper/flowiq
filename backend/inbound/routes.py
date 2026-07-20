@@ -63,24 +63,15 @@ def get_inbox(
     }
 
 
-@router.get("/inbox/message/{message_id}")
-def get_message(
-    message_id: str,
-    email: str = Query(..., description="Linked Gmail address"),
-    download_attachments: bool = Query(True, description="Download attachments to disk"),
-):
-    """Retrieve full email content including body and all attachments."""
-    service = build_gmail_service(email)
-
-    msg = service.users().messages().get(
-        userId="me", id=message_id, format="full"
-    ).execute()
-
+def _parse_message(msg: dict, service, email: str, download_attachments: bool) -> dict:
+    """Shared full-message parsing used by both /inbox/message/{id} and
+    /inbox/thread/{thread_id} so a single message is represented identically
+    whether fetched standalone or as part of a thread."""
+    message_id = msg["id"]
     payload = msg.get("payload", {})
     headers = {h["name"]: h["value"] for h in payload.get("headers", [])}
 
     parts = payload.get("parts", [])
-    # Single-part message (no parts list)
     if not parts:
         body_data = payload.get("body", {}).get("data", "")
         body_text = decode_body(body_data) if payload.get("mimeType") == "text/plain" else ""
@@ -107,6 +98,49 @@ def get_message(
         "body_html": body_html,
         "labels": msg.get("labelIds", []),
         "attachments": attachments,
+    }
+
+
+@router.get("/inbox/message/{message_id}")
+def get_message(
+    message_id: str,
+    email: str = Query(..., description="Linked Gmail address"),
+    download_attachments: bool = Query(True, description="Download attachments to disk"),
+):
+    """Retrieve full email content including body and all attachments."""
+    service = build_gmail_service(email)
+
+    msg = service.users().messages().get(
+        userId="me", id=message_id, format="full"
+    ).execute()
+
+    return _parse_message(msg, service, email, download_attachments)
+
+
+@router.get("/inbox/thread/{thread_id}")
+def get_thread(
+    thread_id: str,
+    email: str = Query(..., description="Linked Gmail address"),
+    download_attachments: bool = Query(True, description="Download attachments to disk"),
+):
+    """Retrieve every message in a Gmail thread (full body + attachments each),
+    oldest first, so the frontend can render one applicant conversation as a
+    single threaded view instead of separate rows per reply."""
+    service = build_gmail_service(email)
+
+    thread = service.users().threads().get(userId="me", id=thread_id, format="full").execute()
+    messages = thread.get("messages", [])
+    # Gmail already returns thread messages in chronological order, but sort
+    # defensively by internalDate so this holds even if that ever changes.
+    messages.sort(key=lambda m: int(m.get("internalDate", 0)))
+
+    parsed = [_parse_message(msg, service, email, download_attachments) for msg in messages]
+
+    return {
+        "email": email,
+        "thread_id": thread_id,
+        "total_messages": len(parsed),
+        "messages": parsed,
     }
 
 

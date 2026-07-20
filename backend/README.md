@@ -168,3 +168,7 @@ Required environment variables (`.env`):
 | `DATABASE_URL` | Postgres connection string |
 | `JWT_SECRET` | Secret used to sign broker login tokens (defaults to an insecure dev value) |
 np,m
+
+
+
+PGPASSWORD=flowiq123 psql -U flowiq -h localhost -d flowiq -c "SELECT * FROM verified_payloads ORDER BY created_at DESC LIMIT 20;"

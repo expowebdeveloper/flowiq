@@ -1,9 +1,5 @@
-import os
-from fastapi import APIRouter, Depends, Request
-from fastapi.templating import Jinja2Templates
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from fastapi import Form
-from fastapi.responses import RedirectResponse
 from loan_recommendation.bank_management.schemas import BankCreate
 from db import get_db
 from loan_recommendation.bank_management.services import (
@@ -15,165 +11,80 @@ router = APIRouter(
     tags=["Bank Management"]
 )
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-_DASH = os.path.join(_HERE, "..", "..", "dashboard", "templates")
-templates = Jinja2Templates(directory=[
-    os.path.join(_HERE, "templates"),
-    os.path.normpath(_DASH)
-])
-
 bank_service = BankManagementService()
 
 
 @router.get("/")
 def bank_list(
-    request: Request,
     db: Session = Depends(get_db)
 ):
-
     banks = bank_service.get_all_banks(db)
+    return {
+        "success": True,
+        "banks": banks
+    }
 
-    return templates.TemplateResponse(
-        request=request,
-        name="list.html",
-        context={
-            "banks": banks
-        }
-    )
 
 @router.post("/add")
 def create_bank(
-
-    name: str = Form(...),
-
-    website: str = Form(None),
-
-    logo: str = Form(None),
-
-    status: str = Form("active"),
-
+    bank: BankCreate,
     db: Session = Depends(get_db)
-
 ):
-
-    bank = BankCreate(
-
-        name=name,
-
-        website=website,
-
-        logo=logo,
-
-        status=status
-
-    )
-
-    bank_service.create_bank(
+    new_bank = bank_service.create_bank(
         db=db,
         bank=bank
     )
+    return {
+        "success": True,
+        "message": "Bank added successfully.",
+        "bank_id": new_bank.id if new_bank else None
+    }
 
-    return RedirectResponse(
-        url="/banks/",
-        status_code=303
-    )
-
-@router.get("/add")
-def add_bank_page(
-    request: Request
-):
-
-    return templates.TemplateResponse(
-        request=request,
-        name="add.html",
-        context={}
-    )
-
-
-@router.get("/{bank_id}/edit")
-def edit_bank_page(
-    bank_id: int,
-    request: Request,
-    db: Session = Depends(get_db)
-):
-
-    bank = bank_service.get_bank(
-        db=db,
-        bank_id=bank_id
-    )
-
-    return templates.TemplateResponse(
-        request=request,
-        name="edit.html",
-        context={
-            "bank": bank
-        }
-    )
 
 @router.post("/{bank_id}/edit")
 def update_bank(
-
     bank_id: int,
-
-    name: str = Form(...),
-
-    website: str = Form(None),
-
-    logo: str = Form(None),
-
-    status: str = Form(...),
-
+    bank_data: BankCreate,
     db: Session = Depends(get_db)
-
 ):
-
     bank = bank_service.get_bank(
         db=db,
         bank_id=bank_id
     )
-
-    bank_data = BankCreate(
-
-        name=name,
-
-        website=website,
-
-        logo=logo,
-
-        status=status
-
-    )
+    if not bank:
+        return {"success": False, "message": "Bank not found."}
 
     bank_service.update_bank(
         db=db,
         bank=bank,
         bank_data=bank_data
     )
+    return {
+        "success": True,
+        "message": "Bank updated successfully."
+    }
 
-    return RedirectResponse(
-        url="/banks/",
-        status_code=303
-    )
 
 @router.get("/{bank_id}/delete")
+@router.post("/{bank_id}/delete")
 def delete_bank(
     bank_id: int,
     db: Session = Depends(get_db)
 ):
-
     bank = bank_service.get_bank(
         db=db,
         bank_id=bank_id
     )
-
     if bank:
-
         bank_service.delete_bank(
             db=db,
             bank=bank
         )
-
-    return RedirectResponse(
-        url="/banks/",
-        status_code=303
-    )
+        return {
+            "success": True,
+            "message": "Bank deleted successfully."
+        }
+    return {
+        "success": False,
+        "message": "Bank not found."
+    }

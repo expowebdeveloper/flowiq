@@ -4,16 +4,14 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
-from auth import require_broker
+from auth import require_bank, require_broker
+from banks.constants import MAX_DOCUMENTS, MAX_DOCUMENT_SIZE
 from db import BankLoanRate, LoanApplication, LoanApplicationDocument, get_session
 
 router = APIRouter(prefix="/loan-applications", tags=["loan-applications"])
 
 APPLICATIONS_DIR = Path("applications")
 APPLICATIONS_DIR.mkdir(exist_ok=True)
-
-MAX_DOCUMENTS = 20
-MAX_DOCUMENT_SIZE = 15 * 1024 * 1024  # 15 MB per file
 
 
 def _serialize(app: LoanApplication, documents: list[LoanApplicationDocument]) -> dict:
@@ -27,9 +25,12 @@ def _serialize(app: LoanApplication, documents: list[LoanApplicationDocument]) -
         "applicant_email": app.applicant_email,
         "notes": app.notes,
         "status": app.status,
+        "credit_score": app.credit_score,
+        "aadhaar_verified": app.aadhaar_verified,
         "created_at": app.created_at.isoformat() if app.created_at else None,
         "documents": [
             {"id": d.id, "filename": d.filename, "content_type": d.content_type, "label": d.label,
+             "content_verified": d.content_verified,
              "download_url": f"/loan-applications/{app.id}/documents/{d.id}"}
             for d in documents
         ],
@@ -128,6 +129,26 @@ def list_loan_applications(current_user: dict = Depends(require_broker)):
     try:
         apps = session.query(LoanApplication).filter(
             LoanApplication.broker_id == current_user["sub"]
+        ).order_by(LoanApplication.created_at.desc()).all()
+
+        result = []
+        for app in apps:
+            docs = session.query(LoanApplicationDocument).filter(
+                LoanApplicationDocument.application_id == app.id
+            ).all()
+            result.append(_serialize(app, docs))
+        return {"count": len(result), "applications": result}
+    finally:
+        session.close()
+
+
+@router.get("/bank")
+def list_applications_for_bank(current_user: dict = Depends(require_bank)):
+    """List loan applications submitted for the current bank (bank-account login only)."""
+    session = get_session()
+    try:
+        apps = session.query(LoanApplication).filter(
+            LoanApplication.bank_name == current_user["bank_name"]
         ).order_by(LoanApplication.created_at.desc()).all()
 
         result = []

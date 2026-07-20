@@ -48,7 +48,12 @@ router = APIRouter(tags=["auth"])
 
 @router.get("/auth/me")
 def me(current_user: dict = Depends(get_current_user)):
-    return {"id": current_user["sub"], "email": current_user["email"], "role": current_user["role"]}
+    return {
+        "id": current_user["sub"],
+        "email": current_user["email"],
+        "role": current_user["role"],
+        "bank_name": current_user.get("bank_name"),
+    }
 
 
 def _pop_verifier(state: str) -> Optional[str]:
