@@ -48,7 +48,12 @@ router = APIRouter(tags=["auth"])
 
 @router.get("/auth/me")
 def me(current_user: dict = Depends(get_current_user)):
-    return {"id": current_user["sub"], "email": current_user["email"], "role": current_user["role"]}
+    return {
+        "id": current_user["sub"],
+        "email": current_user["email"],
+        "role": current_user["role"],
+        "bank_name": current_user.get("bank_name"),
+    }
 
 
 def _pop_verifier(state: str) -> Optional[str]:
@@ -110,14 +115,14 @@ def build_gmail_service(email: str):
 
 
 @router.get("/auth/link")
-def link_email(email: str = Query(..., description="Gmail address to link")):
-    """Start OAuth flow for the given email."""
+def link_email(email: Optional[str] = Query(None, description="Gmail address to pre-fill (optional)")):
+    """Start the Google OAuth flow. If no email is given, Google's account chooser is shown."""
     code_verifier = secrets.token_urlsafe(64)
     code_challenge = base64.urlsafe_b64encode(
         hashlib.sha256(code_verifier.encode()).digest()
     ).rstrip(b"=").decode()
 
-    state = email
+    state = secrets.token_urlsafe(24)
     _save_verifier(state, code_verifier)
 
     flow = Flow.from_client_config(
@@ -125,15 +130,17 @@ def link_email(email: str = Query(..., description="Gmail address to link")):
         scopes=SCOPES,
         redirect_uri=REDIRECT_URI,
     )
-    auth_url, _ = flow.authorization_url(
+    auth_kwargs = dict(
         access_type="offline",
         include_granted_scopes="true",
-        login_hint=email,
         prompt="consent",
         state=state,
         code_challenge=code_challenge,
         code_challenge_method="S256",
     )
+    if email:
+        auth_kwargs["login_hint"] = email
+    auth_url, _ = flow.authorization_url(**auth_kwargs)
     return RedirectResponse(auth_url)
 
 

@@ -1,6 +1,6 @@
-import os
 import json
 import base64
+import secrets
 from pathlib import Path
 from typing import Optional
 from email.mime.text import MIMEText
@@ -14,10 +14,10 @@ from langchain.prompts import PromptTemplate
 
 from auth.oauth import build_gmail_service
 from inbound.extraction import decode_body
-from agents.aadhaar import (
+from inbound.threading import apply_threading_headers
+from agents.documents import (
     extract_pdf_text,
     extract_image_text,
-    looks_like_aadhaar,
     IMAGE_MIME_TYPES,
     IMAGE_EXTENSIONS,
 )
@@ -29,7 +29,6 @@ from db import (
     User,
     BankLoanRate,
     LoanApplication,
-    LoanApplicationDocument,
 )
 
 load_dotenv()
@@ -41,8 +40,8 @@ AADHAAR_APPLICATIONS_DIR.mkdir(exist_ok=True)
 
 llm = ChatGroq(
     model="llama-3.3-70b-versatile",
-    api_key=os.getenv("GROQ_API_KEY"),
     temperature=0.3,
+    timeout=120,
 )
 
 
@@ -96,11 +95,12 @@ def _make_tools(email: str, broker_id: str):
     @tool
     def get_unread_emails(max_results: str = "10") -> str:
         """
-        Fetch unread emails from Gmail inbox (both with and without attachments).
+        Fetch recent inbox emails that still need a reply (both with and without attachments).
         Returns a JSON list with id, thread_id, subject, from, to, date, snippet, has_attachment.
-        Only emails that have NOT already been replied to are included.
+        Only emails that have NOT already been replied to are included — this is tracked in
+        our own database, independent of Gmail's read/unread state (viewing a message elsewhere,
+        e.g. in the Mail UI, does not remove it from this list).
         Use this first to see what emails need replies.
-        Action Input: just a number like 10
         """
         service = build_gmail_service(email)
         try:
@@ -108,7 +108,7 @@ def _make_tools(email: str, broker_id: str):
         except Exception:
             limit = 20
         result = service.users().messages().list(
-            userId="me", maxResults=limit, q="is:unread in:inbox"
+            userId="me", maxResults=limit, q="in:inbox -in:chats -in:sent newer_than:7d"
         ).execute()
         messages = result.get("messages", [])
 
@@ -146,6 +146,7 @@ def _make_tools(email: str, broker_id: str):
         Returns: subject, from, body text, and extracted text from all attachments.
         Always use this before replying so you understand the full context.
         """
+        message_id = message_id.strip()
         service = build_gmail_service(email)
         msg = service.users().messages().get(
             userId="me", id=message_id, format="full"
@@ -175,11 +176,10 @@ def _make_tools(email: str, broker_id: str):
         }, indent=2)
 
     @tool
-    def check_aadhaar_and_get_requirements(input: str) -> str:
+    def create_loan_application_and_get_required_documents(input: str) -> str:
         """
-        Checks whether the email's attachments include a valid-looking Aadhaar card,
-        and if so, records the applicant and returns the full list of documents the
-        bank still needs for this loan (from the bank's stored requirements).
+        Records the applicant's loan inquiry and returns the list of documents required
+        for that bank + loan type, so the client can be asked to send them over email.
 
         Input must be a JSON string with keys:
           - message_id: id from the original email
@@ -190,9 +190,9 @@ def _make_tools(email: str, broker_id: str):
           - applicant_phone: phone number if mentioned in the email body, else ""
 
         Returns JSON with:
-          - aadhaar_found: true/false — whether a valid-looking Aadhaar attachment was found
-          - required_documents: text of all documents required by the bank for this loan
-            (only present when aadhaar_found is true)
+          - application_id: the created application's id
+          - required_documents: text of all documents required by the bank for this loan —
+            list these out for the client in your reply so they know exactly what to send
         Call this AFTER read_email, once per message, before deciding how to reply.
         """
         try:
@@ -200,55 +200,12 @@ def _make_tools(email: str, broker_id: str):
         except Exception:
             return "Error: input must be valid JSON with keys: message_id, bank_name, loan_type, applicant_name, applicant_email, applicant_phone"
 
-        message_id = data.get("message_id")
+        message_id = data.get("message_id", "").strip()
         if not message_id:
             return "Error: message_id is required."
 
-        service = build_gmail_service(email)
-        msg = service.users().messages().get(userId="me", id=message_id, format="full").execute()
-        payload = msg.get("payload", {})
-        parts = payload.get("parts", [])
-
-        aadhaar_found = False
-        aadhaar_filename = None
-        aadhaar_bytes = None
-        aadhaar_mime = None
-
-        def scan(parts_list):
-            nonlocal aadhaar_found, aadhaar_filename, aadhaar_bytes, aadhaar_mime
-            for part in parts_list:
-                if aadhaar_found:
-                    return
-                if part.get("parts"):
-                    scan(part["parts"])
-                    continue
-                filename = part.get("filename", "")
-                body = part.get("body", {})
-                mime = part.get("mimeType", "")
-                if not filename or not body.get("attachmentId"):
-                    continue
-                att_data = service.users().messages().attachments().get(
-                    userId="me", messageId=message_id, id=body["attachmentId"]
-                ).execute()
-                file_bytes = base64.urlsafe_b64decode(att_data["data"] + "==")
-                text = ""
-                if mime == "application/pdf" or filename.lower().endswith(".pdf"):
-                    text = extract_pdf_text(file_bytes)
-                elif mime in IMAGE_MIME_TYPES or filename.lower().endswith(IMAGE_EXTENSIONS):
-                    text = extract_image_text(file_bytes)
-                if looks_like_aadhaar(filename, text):
-                    aadhaar_found = True
-                    aadhaar_filename = filename
-                    aadhaar_bytes = file_bytes
-                    aadhaar_mime = mime
-
-        scan(parts)
-
-        if not aadhaar_found:
-            return json.dumps({"aadhaar_found": False})
-
-        bank_name = data.get("bank_name", "")
-        loan_type = data.get("loan_type", "")
+        bank_name = data.get("bank_name", "").strip()
+        loan_type = data.get("loan_type", "").strip()
 
         session = get_session()
         try:
@@ -264,26 +221,12 @@ def _make_tools(email: str, broker_id: str):
                 applicant_name=data.get("applicant_name", ""),
                 applicant_phone=data.get("applicant_phone", ""),
                 applicant_email=data.get("applicant_email", ""),
-                notes=f"Auto-created from inbound email {message_id} by AI agent after Aadhaar verification.",
+                notes=f"Auto-created from inbound email {message_id} by AI agent.",
+                kyc_token=secrets.token_urlsafe(32),
             )
             session.add(application)
             session.commit()
             session.refresh(application)
-
-            app_dir = AADHAAR_APPLICATIONS_DIR / application.id
-            app_dir.mkdir(exist_ok=True)
-            doc = LoanApplicationDocument(
-                application_id=application.id,
-                filename=aadhaar_filename,
-                saved_path="",
-                content_type=aadhaar_mime,
-            )
-            session.add(doc)
-            session.flush()
-            file_path = app_dir / f"{doc.id}_{aadhaar_filename}"
-            file_path.write_bytes(aadhaar_bytes)
-            doc.saved_path = str(file_path)
-            session.commit()
 
             application_id = application.id
             required_documents = bank_rate.required_documents if bank_rate else None
@@ -291,10 +234,53 @@ def _make_tools(email: str, broker_id: str):
             session.close()
 
         return json.dumps({
-            "aadhaar_found": True,
             "application_id": application_id,
             "required_documents": required_documents or "Please contact us for the full list of required documents.",
         })
+
+    def _send_reply_impl(input: str) -> str:
+        try:
+            data = json.loads(input)
+        except Exception:
+            return "Error: input must be valid JSON with keys: to, subject, body, thread_id, message_id"
+
+        message_id = data.get("message_id", "").strip()
+        if not message_id:
+            return "Error: message_id is required so this reply can be tracked and not sent twice."
+
+        thread_id = data.get("thread_id", "").strip()
+        to_addr = data.get("to", "").strip()
+
+        if not claim_message_for_reply(message_id, email):
+            return f"Skipped: message {message_id} was already replied to. Do not send this reply again."
+
+        service = build_gmail_service(email)
+        mime = MIMEMultipart("alternative")
+        mime["To"] = to_addr
+        mime["From"] = email
+        mime["Subject"] = data["subject"] if data["subject"].startswith("Re:") else f"Re: {data['subject']}"
+        # message_id here is the Gmail API message id, not an RFC Message-Id
+        # — apply_threading_headers looks up the real header so the reply
+        # threads correctly in the RECIPIENT's mailbox too (Gmail threads the
+        # SENDER's own view by threadId regardless of headers, which is why
+        # this bug is invisible from the sending account).
+        apply_threading_headers(mime, service, message_id)
+        mime.attach(MIMEText(data["body"], "plain"))
+
+        raw = base64.urlsafe_b64encode(mime.as_bytes()).decode()
+        try:
+            result = service.users().messages().send(
+                userId="me", body={"raw": raw, "threadId": thread_id}
+            ).execute()
+        except Exception as e:
+            release_reply_claim(message_id)
+            return f"Error: failed to send reply, will retry later: {e}"
+
+        service.users().messages().modify(
+            userId="me", id=message_id, body={"removeLabelIds": ["UNREAD"]}
+        ).execute()
+
+        return json.dumps({"status": "sent", "message_id": result.get("id")})
 
     @tool
     def send_reply(input: str) -> str:
@@ -308,43 +294,24 @@ def _make_tools(email: str, broker_id: str):
           - message_id: id from the original email
         Example: {"to": "someone@gmail.com", "subject": "Re: Hello", "body": "Thanks!", "thread_id": "abc", "message_id": "abc"}
         """
-        try:
-            data = json.loads(input)
-        except Exception:
-            return "Error: input must be valid JSON with keys: to, subject, body, thread_id, message_id"
+        return _send_reply_impl(input)
 
-        message_id = data.get("message_id")
-        if not message_id:
-            return "Error: message_id is required so this reply can be tracked and not sent twice."
+    @tool
+    def send_email(input: str) -> str:
+        """
+        Alias for send_reply — sends a reply to an email. Use send_reply instead
+        when possible, but this works identically if called by that name.
+        Input must be a JSON string with keys: to, subject, body, thread_id, message_id.
+        """
+        return _send_reply_impl(input)
 
-        if not claim_message_for_reply(message_id, email):
-            return f"Skipped: message {message_id} was already replied to. Do not send this reply again."
-
-        service = build_gmail_service(email)
-        mime = MIMEMultipart("alternative")
-        mime["To"] = data["to"]
-        mime["From"] = email
-        mime["Subject"] = data["subject"] if data["subject"].startswith("Re:") else f"Re: {data['subject']}"
-        mime["In-Reply-To"] = data["message_id"]
-        mime["References"] = data["message_id"]
-        mime.attach(MIMEText(data["body"], "plain"))
-
-        raw = base64.urlsafe_b64encode(mime.as_bytes()).decode()
-        try:
-            result = service.users().messages().send(
-                userId="me", body={"raw": raw, "threadId": data["thread_id"]}
-            ).execute()
-        except Exception as e:
-            release_reply_claim(message_id)
-            return f"Error: failed to send reply, will retry later: {e}"
-
-        service.users().messages().modify(
-            userId="me", id=message_id, body={"removeLabelIds": ["UNREAD"]}
-        ).execute()
-
-        return json.dumps({"status": "sent", "message_id": result.get("id")})
-
-    return [get_unread_emails, read_email, check_aadhaar_and_get_requirements, send_reply]
+    return [
+        get_unread_emails,
+        read_email,
+        create_loan_application_and_get_required_documents,
+        send_reply,
+        send_email,
+    ]
 
 
 # ─── ReAct Prompt ─────────────────────────────────────────────────────────────
@@ -354,18 +321,26 @@ You are an intelligent email assistant managing the inbox of {email}.
 
 Your job:
 1. Use get_unread_emails to fetch all unread emails
-2. For each real personal or business email, use read_email to read the full content including ALL attachments (PDFs, text files)
-3. Understand the full context — email body + attachment content combined
-4. If the email is a loan inquiry (mentions a bank, loan, applying, interested in a loan, etc.), follow the Loan Inquiry Flow below
-5. Otherwise, write a highly relevant, professional reply based on BOTH the email body AND attachment content
-6. Use send_reply to send the reply
+2. Classify EACH email in the returned list ONE BY ONE using the Classification Rule below — do not judge the list as a whole or assume the whole batch is the same type
+3. For each email classified as real, use read_email to read its full content including ALL attachments (PDFs, text files)
+4. Understand the full context — email body + attachment content combined
+5. If the email is a loan inquiry (mentions a bank, loan, applying, interested in a loan, etc.), follow the Loan Inquiry Flow below
+6. Otherwise, write a highly relevant, professional reply based on BOTH the email body AND attachment content
+7. Use send_reply to send the reply
+
+Classification Rule (apply per email, not to the batch):
+- An email is REAL (must be processed and replied to) if the "from" name/address looks like a person or a company you'd do business with, AND the subject/snippet is not obviously mass marketing.
+- An email is a NEWSLETTER/PROMO (skip it) only if it is CLEARLY mass marketing: sent from a brand/product/newsletter address (e.g. "The Batch @ DeepLearning.AI", "Adobe Creative Cloud", growth@, noreply@, hello@mail.*), or the subject is a marketing pitch/digest.
+- An email is an AUTOMATED SYSTEM MESSAGE (always skip it, never reply) if it is sent by a mail system rather than a person — e.g. "Mail Delivery Subsystem", mailer-daemon@, postmaster@, any "Delivery Status Notification (Failure)" / bounce / NDR message, or any other automated non-human sender. These are not the same as newsletters, but the rule is identical: skip them and never send a reply, no matter how the subject reads.
+- A short or vague subject (e.g. just "loan", "Car Loan", "Finance Related") from what looks like an individual's name and a normal company/personal email address is REAL — never skip it just because the subject is short. When unsure whether one specific email is real or a newsletter, treat it as REAL and process it — only skip the ones that are obviously mass marketing or automated system messages.
+- Never make one blanket decision like "all messages in this batch are newsletters" — go through the list and decide per email.
 
 Loan Inquiry Flow (for emails about applying for a loan):
 - Figure out the bank name and loan_type (one of home_loan, education_loan, personal_loan, car_loan, gold_loan) the client is asking about, from the email body/subject
-- Call check_aadhaar_and_get_requirements with the message_id, bank_name, loan_type, and the applicant's name/email/phone as best known from the email
-- If aadhaar_found is false: reply politely asking the client to share/attach their Aadhaar card, since it is required to proceed with the loan application. Do not say they are approved or eligible.
-- If aadhaar_found is true: reply confirming their Aadhaar card was received and verified, then tell them that to proceed further the bank also needs the documents listed in required_documents (include that exact list in the reply)
-- Never state a client is fully "eligible" for the loan — only confirm Aadhaar was received/verified and list what else is still needed
+- Call create_loan_application_and_get_required_documents with the message_id, bank_name, loan_type, and the applicant's name/email/phone as best known from the email
+- Reply politely thanking them for their interest, and clearly list out every document from required_documents, asking them to reply to this email with those documents attached (as PDF or image files, e.g. photos or scans)
+- Do NOT send a KYC form link — document collection now happens entirely by the client attaching files directly to their email reply
+- Never state a client is fully "approved" or "eligible" for the loan — only confirm their inquiry was received and that you're waiting on their documents
 
 Rules:
 - get_unread_emails already excludes messages that were already replied to — never call send_reply for a message that wasn't returned by get_unread_emails in this run
@@ -393,6 +368,16 @@ Observation: the result of the action
 Thought: I now know the final answer
 Final Answer: summary of all emails processed and replies sent
 
+CRITICAL: The "Action:" line must contain ONLY the bare tool name — never write arguments,
+parentheses, or quotes on that line. Put the argument(s) on the separate "Action Input:" line.
+
+Correct:
+Action: get_unread_emails
+Action Input: 10
+
+WRONG — never do this:
+Action: get_unread_emails(max_results='10')
+
 Begin!
 
 Question: {input}
@@ -416,7 +401,8 @@ def run_email_agent(email: str, task: Optional[str] = None) -> str:
         agent=agent,
         tools=tools,
         verbose=True,
-        max_iterations=30,
+        max_iterations=10,
+        max_execution_time=300,
         handle_parsing_errors=True,
     )
     user_task = task or (

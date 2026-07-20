@@ -53,3 +53,5 @@ alembic/__pycache__/
 # Coverage
 .coverage
 htmlcov/
+
+**/logs/

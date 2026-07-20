@@ -7,6 +7,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from auth.oauth import build_gmail_service
+from inbound.threading import apply_threading_headers
 
 router = APIRouter(tags=["email"])
 
@@ -33,8 +34,12 @@ def send_email(req: SendEmailRequest):
     if req.cc:
         mime["Cc"] = req.cc
     if req.reply_to_message_id:
-        mime["In-Reply-To"] = req.reply_to_message_id
-        mime["References"]  = req.reply_to_message_id
+        # reply_to_message_id is a Gmail API message id, not an RFC
+        # Message-Id — apply_threading_headers looks up the real header so
+        # the reply threads correctly in the RECIPIENT's mailbox too (Gmail
+        # threads the SENDER's own view by threadId regardless of headers,
+        # which is why this bug is invisible from the sending account).
+        apply_threading_headers(mime, service, req.reply_to_message_id)
 
     mime.attach(MIMEText(req.body, "plain"))
 

@@ -1,0 +1,390 @@
+{
+  "applicant_requirements": {
+    "mandatory_fields": [
+      {
+        "field": "applicant_name",
+        "label": "Full Name",
+        "description": "Full legal name as it appears on official documents (e.g., government-issued photo ID)."
+      },
+      {
+        "field": "applicant_phone",
+        "label": "Phone Number",
+        "description": "Active mobile number for communication and verification."
+      },
+      {
+        "field": "applicant_email",
+        "label": "Email Address",
+        "description": "Valid email address for notification and receiving application status updates."
+      },
+      {
+        "field": "date_of_birth",
+        "label": "Date of Birth",
+        "description": "Applicant's date of birth to verify age eligibility."
+      },
+      {
+        "field": "gender",
+        "label": "Gender",
+        "description": "Gender of the applicant (Male, Female, or Other)."
+      },
+      {
+        "field": "address",
+        "label": "Residential Address",
+        "description": "Current residential address of the applicant."
+      }
+    ],
+    "mandatory_documents": [
+      {
+        "document": "Government-issued Photo ID",
+        "description": "A valid government-issued photo ID such as a driver's license, state ID, or passport, used to verify identity."
+      },
+      {
+        "document": "Social Security Number (SSN)",
+        "description": "Social Security card or other official document confirming the applicant's SSN, used for identity and credit verification."
+      },
+      {
+        "document": "Recent Pay Stubs",
+        "description": "Pay stubs from the last 30 days, used to verify current income and employment."
+      },
+      {
+        "document": "W-2 Forms",
+        "description": "Most recent W-2 Wage and Tax Statement, used to verify annual income and employer."
+      },
+      {
+        "document": "Federal Tax Returns",
+        "description": "Most recent federal income tax return (Form 1040), used to verify annual income and filing status."
+      },
+      {
+        "document": "Bank Statements",
+        "description": "Recent bank statements showing account activity and balances, used to verify assets and cash flow."
+      }
+    ]
+  },
+  "loan_category_requirements": {
+    "Gold Loan": {
+      "mandatory_fields": [
+        {
+          "field": "gold_weight_grams",
+          "label": "Gold Weight (Grams)",
+          "description": "Total weight of gold ornaments in grams."
+        },
+        {
+          "field": "gold_purity_carats",
+          "label": "Gold Purity (Carats)",
+          "description": "Purity of gold (typically 18K, 22K, or 24K)."
+        }
+      ],
+      "mandatory_documents": [
+        {
+          "document": "Gold Valuation Certificate",
+          "description": "Certified certificate showing weight and purity valuation of the gold."
+        }
+      ]
+    },
+    "Vehicle Loan": {
+      "mandatory_fields": [
+        {
+          "field": "vehicle_model",
+          "label": "Vehicle Model",
+          "description": "Make, model, and variant of the vehicle."
+        },
+        {
+          "field": "ex_showroom_price",
+          "label": "Ex-Showroom Price",
+          "description": "Price of the vehicle excluding registration, insurance, etc."
+        }
+      ],
+      "mandatory_documents": []
+    },
+    "Home Loan": {
+      "mandatory_fields": [
+        {
+          "field": "property_address",
+          "label": "Property Address",
+          "description": "Location address of the property to be purchased or constructed."
+        },
+        {
+          "field": "property_value",
+          "label": "Property Value",
+          "description": "Estimated or purchase market value of the property."
+        }
+      ],
+      "mandatory_documents": [
+        {
+          "document": "Purchase Agreement / Sales Contract",
+          "description": "Signed purchase agreement or sales contract for the property being financed, used to verify the transaction and purchase price."
+        },
+        {
+          "document": "Proof of Down Payment Funds",
+          "description": "Bank letter or statement verifying funds available and designated for the down payment."
+        },
+        {
+          "document": "Homeowners Insurance Declaration Page",
+          "description": "Insurance policy declarations page showing coverage limits, deductible, and premium for the property."
+        },
+        {
+          "document": "Property Appraisal Report",
+          "description": "Licensed appraiser's report establishing the property's market value."
+        }
+      ]
+    },
+    "Personal Loan": {
+      "mandatory_fields": [
+        {
+          "field": "monthly_income",
+          "label": "Monthly Income",
+          "description": "Net monthly take-home salary or profit."
+        },
+        {
+          "field": "employer_name",
+          "label": "Employer Name",
+          "description": "Name of current employer or company."
+        }
+      ],
+      "mandatory_documents": [
+        {
+          "document": "Latest 3 Months Salary Slips",
+          "description": "Recent pay stubs to verify monthly income."
+        }
+      ]
+    },
+    "Education Loan": {
+      "mandatory_fields": [
+        {
+          "field": "college_name",
+          "label": "Institution Name",
+          "description": "Name of the academic university or college."
+        },
+        {
+          "field": "course_name",
+          "label": "Course Name",
+          "description": "Name of academic program or course."
+        }
+      ],
+      "mandatory_documents": [
+        {
+          "document": "Admission Letter",
+          "description": "Official admission offer letter from the college or university."
+        },
+        {
+          "document": "Fee Structure Document",
+          "description": "Detailed breakdown of college fees and academic expenses."
+        }
+      ]
+    }
+  },
+  "bank_eligibility_criteria": {
+    "HDFC Bank": {
+      "Gold Loan": {
+        "min_credit_score": 600,
+        "min_monthly_income": 15000,
+        "max_loan_amount_limit": 5000000,
+        "max_tenure_years": 3,
+        "required_documents": [
+          "Gold Valuation Certificate"
+        ]
+      },
+      "Vehicle Loan": {
+        "min_credit_score": 700,
+        "min_monthly_income": 25000,
+        "max_loan_amount_limit": 4000000,
+        "max_tenure_years": 7,
+        "required_documents": [
+          "Latest 3 Months Salary Slips"
+        ]
+      },
+      "Home Loan": {
+        "min_credit_score": 720,
+        "min_monthly_income": 35000,
+        "max_loan_amount_limit": 15000000,
+        "max_tenure_years": 30,
+        "required_documents": [
+          "Property Title Deeds",
+          "Sale Agreement",
+          "Latest 3 Months Salary Slips",
+          "6 Months Bank Account Statement"
+        ]
+      },
+      "Personal Loan": {
+        "min_credit_score": 750,
+        "min_monthly_income": 40000,
+        "max_loan_amount_limit": 5000000,
+        "max_tenure_years": 5,
+        "required_documents": [
+          "Latest 3 Months Salary Slips",
+          "6 Months Bank Account Statement",
+          "Proof of Employment / Business Existence"
+        ]
+      },
+      "Education Loan": {
+        "min_credit_score": 680,
+        "min_monthly_income": 20000,
+        "max_loan_amount_limit": 7500000,
+        "max_tenure_years": 15,
+        "required_documents": [
+          "Admission Letter",
+          "Fee Structure Document",
+          "Co-Applicant Income Proof"
+        ]
+      }
+    },
+    "State Bank of India": {
+      "Gold Loan": {
+        "min_credit_score": 580,
+        "min_monthly_income": 12000,
+        "max_loan_amount_limit": 4000000,
+        "max_tenure_years": 3,
+        "required_documents": [
+          "Gold Valuation Certificate"
+        ]
+      },
+      "Vehicle Loan": {
+        "min_credit_score": 680,
+        "min_monthly_income": 20000,
+        "max_loan_amount_limit": 3000000,
+        "max_tenure_years": 7,
+        "required_documents": [
+          "Latest 3 Months Salary Slips"
+        ]
+      },
+      "Home Loan": {
+        "min_credit_score": 700,
+        "min_monthly_income": 30000,
+        "max_loan_amount_limit": 20000000,
+        "max_tenure_years": 30,
+        "required_documents": [
+          "Property Title Deeds",
+          "Sale Agreement",
+          "Form 16 / ITR of Last 2 Years",
+          "6 Months Bank Statement of Salary Account"
+        ]
+      },
+      "Personal Loan": {
+        "min_credit_score": 720,
+        "min_monthly_income": 30000,
+        "max_loan_amount_limit": 4000000,
+        "max_tenure_years": 5,
+        "required_documents": [
+          "6 Months Bank Statement of Salary Account",
+          "Employment Identity Card",
+          "Form 16 / ITR of Last 2 Years"
+        ]
+      },
+      "Education Loan": {
+        "min_credit_score": 650,
+        "min_monthly_income": 18000,
+        "max_loan_amount_limit": 10000000,
+        "max_tenure_years": 15,
+        "required_documents": [
+          "Admission Letter",
+          "Fee Structure Document",
+          "ITR of Co-Applicant"
+        ]
+      }
+    },
+    "IDFC First Bank": {
+      "Gold Loan": {
+        "min_credit_score": 550,
+        "min_monthly_income": 10000,
+        "max_loan_amount_limit": 3000000,
+        "max_tenure_years": 2,
+        "required_documents": [
+          "Gold Valuation Certificate"
+        ]
+      },
+      "Vehicle Loan": {
+        "min_credit_score": 650,
+        "min_monthly_income": 18000,
+        "max_loan_amount_limit": 2500000,
+        "max_tenure_years": 5,
+        "required_documents": [
+          "Latest 2 Months Salary Slips"
+        ]
+      },
+      "Home Loan": {
+        "min_credit_score": 680,
+        "min_monthly_income": 25000,
+        "max_loan_amount_limit": 12000000,
+        "max_tenure_years": 25,
+        "required_documents": [
+          "Property Title Deeds",
+          "Sale Agreement",
+          "Latest 2 Months Salary Slips",
+          "3 Months Bank Statement"
+        ]
+      },
+      "Personal Loan": {
+        "min_credit_score": 700,
+        "min_monthly_income": 25000,
+        "max_loan_amount_limit": 3000000,
+        "max_tenure_years": 5,
+        "required_documents": [
+          "Latest 2 Months Salary Slips",
+          "3 Months Bank Statement",
+          "Office Address Proof"
+        ]
+      },
+      "Education Loan": {
+        "min_credit_score": 630,
+        "min_monthly_income": 15000,
+        "max_loan_amount_limit": 5000000,
+        "max_tenure_years": 15,
+        "required_documents": [
+          "Admission Letter",
+          "Fee Structure Document"
+        ]
+      }
+    },
+    "Punjab National Bank": {
+      "Gold Loan": {
+        "min_credit_score": 570,
+        "min_monthly_income": 11000,
+        "max_loan_amount_limit": 3500000,
+        "max_tenure_years": 3,
+        "required_documents": [
+          "Gold Valuation Certificate"
+        ]
+      },
+      "Vehicle Loan": {
+        "min_credit_score": 670,
+        "min_monthly_income": 19000,
+        "max_loan_amount_limit": 2800000,
+        "max_tenure_years": 7,
+        "required_documents": [
+          "Latest 3 Months Salary Slips"
+        ]
+      },
+      "Home Loan": {
+        "min_credit_score": 680,
+        "min_monthly_income": 28000,
+        "max_loan_amount_limit": 15000000,
+        "max_tenure_years": 30,
+        "required_documents": [
+          "Property Title Deeds",
+          "Sale Agreement",
+          "ITR / Assessment Orders of Last 2 Years",
+          "6 Months Bank Statement"
+        ]
+      },
+      "Personal Loan": {
+        "min_credit_score": 710,
+        "min_monthly_income": 28000,
+        "max_loan_amount_limit": 3500000,
+        "max_tenure_years": 5,
+        "required_documents": [
+          "6 Months Bank Statement",
+          "Proof of Business/Employment Status"
+        ]
+      },
+      "Education Loan": {
+        "min_credit_score": 640,
+        "min_monthly_income": 17000,
+        "max_loan_amount_limit": 8000000,
+        "max_tenure_years": 15,
+        "required_documents": [
+          "Admission Letter",
+          "Fee Structure Document"
+        ]
+      }
+    }
+  }
+}

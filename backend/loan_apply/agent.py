@@ -1,0 +1,616 @@
+import base64
+import logging
+import re
+import secrets
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+from langchain_groq import ChatGroq
+
+from agent_activity import emit
+from auth.oauth import build_gmail_service
+from db import GmailToken, get_session
+from inbound.threading import apply_threading_headers
+from .requirements import get_required_documents
+
+logger = logging.getLogger(__name__)
+
+# Short, case-sensitive, human-typeable stand-in for a submission's real UUID
+# (see db.UserFormSubmission.short_code) — embedded in every loan_apply
+# email's subject (see application_id_tag below) so an applicant's reply
+# carries it back to us even if they compose a brand-new message instead of
+# hitting Reply. Gmail's "Re:" on a genuine reply keeps the original subject
+# (and thus this tag) intact; a new message only matches if the applicant
+# copies the tag in themselves. celery_app.poll_loan_applicant_replies
+# extracts this with APPLICATION_ID_RE and looks it up by short_code.
+#
+# Alphabet excludes visually-ambiguous characters (0/O, 1/I/l) since this is
+# meant to be read off an email and typed back in; case sensitivity is what
+# keeps 8 characters from that reduced alphabet still collision-resistant
+# enough for this use (57^8 ≈ 1.1×10^14 possibilities).
+SHORT_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+SHORT_CODE_LENGTH = 8
+APPLICATION_ID_RE = re.compile(r"\[application id:\s*([0-9A-Za-z]{8})\]", re.IGNORECASE)
+
+
+def generate_short_code() -> str:
+    return "".join(secrets.choice(SHORT_CODE_ALPHABET) for _ in range(SHORT_CODE_LENGTH))
+
+
+def application_id_tag(short_code: str, subject: str) -> str:
+    return f"[application id: {short_code}] {subject}"
+
+
+def extract_application_id(text: str) -> str | None:
+    """
+    Pulls the first `[application id: <code>]` tag's code out of a subject or
+    body, or None if absent. The code itself is returned exactly as matched
+    (case preserved) — matching against db.UserFormSubmission.short_code must
+    be an exact, case-sensitive comparison, never case-insensitive, since the
+    alphabet was chosen specifically so upper/lower variants are both valid
+    distinct codes.
+    """
+    match = APPLICATION_ID_RE.search(text or "")
+    return match.group(1) if match else None
+
+llm = ChatGroq(
+    model="llama-3.3-70b-versatile",
+    temperature=0.3,
+    timeout=120,
+)
+
+REQUIREMENTS_INTRO_PROMPT = """You are a loan assistant writing an email to a loan applicant.
+
+Applicant name: {applicant_name}
+Loan type requested: {loan_category}
+
+Write ONLY a short, friendly, professional greeting and opening paragraph (1-2 sentences) telling
+the applicant that to proceed with their {loan_category} application, you need them to send over
+the documents listed below. Do NOT write out the document names or a list yourself, and do NOT
+write a closing/sign-off line — both will be appended separately after your text. Do not mention
+any portal, website, or a different email address. Do not add pricing, interest rate, or approval
+promises.
+
+Write only that opening paragraph (no subject line, no markdown, no document list, no closing).
+"""
+
+MISSING_DOCUMENTS_INTRO_PROMPT = """You are a loan assistant writing a follow-up email to a loan applicant
+who already replied to their {loan_category} application requirements email, but their application
+is still incomplete.
+
+Applicant name: {applicant_name}
+
+Write ONLY a short, friendly, professional opening that:
+1. Thanks them generically for their reply (e.g. "thank you for getting back to us") — do NOT
+   claim to have received any specific named document, since you have not been told which (if
+   any) of their attachments were successfully verified.
+2. Tells them we still need the documents listed below. Do NOT write out the document names or
+   a list yourself — the list will be inserted separately after your text.
+3. {unclear_instruction}
+Do NOT mention any portal, website, or a different email address to send documents to, since
+none exists. Do not add pricing, interest rate, or approval promises. Do NOT write a closing/
+sign-off line or a "reply to this email" instruction — both will be appended separately.
+
+Write only that opening (no subject line, no markdown, no document list, no closing).
+"""
+
+MISSING_APPLICATION_ID_PROMPT = """You are a loan assistant writing an email to someone who emailed in
+about their loan application, but you could not tell which application it belongs to.
+
+Write ONLY a short, friendly, professional message that:
+1. Thanks them for getting in touch.
+2. Explains that you could not find their application ID in this message, so you're unable to match
+   it to their application yet.
+3. Asks them to please reply with their application ID included, or reply directly to the original
+   "Required documents" email instead of starting a new one.
+Do NOT mention any portal, website, or a different email address. Do not add pricing, interest rate,
+or approval promises. Do NOT write a closing/sign-off line — it will be appended separately.
+
+Write only that message (no subject line, no markdown, no closing).
+"""
+
+DECISION_PROMPTS = {
+    "rejected": """You are a loan assistant writing an email to a loan applicant informing them that
+{bank_name} has reviewed their {loan_category} application and decided not to move forward with it.
+
+Applicant name: {applicant_name}
+Bank remarks (may be empty): {remarks}
+
+Write a short, polite, professional email that:
+1. Clearly but kindly states that {bank_name} is unable to offer this loan at this time.
+2. If bank remarks are given, incorporate the reason in plain language; if empty, do not invent one.
+3. Does NOT discourage them from hearing from other banks that may still be reviewing their
+   application, if any are.
+Do not add pricing, interest rate, or approval promises. Do NOT write a closing/sign-off line —
+it will be appended separately.
+
+Write only the email body text (no subject line, no markdown, no closing).
+""",
+    "offer": """You are a loan assistant writing an email to a loan applicant informing them that
+{bank_name} has made them an offer on their {loan_category} application.
+
+Applicant name: {applicant_name}
+Offer details from the bank (may be empty): {remarks}
+
+Write a short, friendly, professional email that:
+1. Congratulates them and states that {bank_name} has approved/offered them the loan.
+2. If offer details are given, relay them in plain language; if empty, tell them to expect the
+   bank to follow up shortly with full terms — do not invent numbers.
+3. Tells them to expect further contact from the bank for next steps.
+Do NOT write a closing/sign-off line — it will be appended separately.
+
+Write only the email body text (no subject line, no markdown, no closing).
+""",
+    "offer_more_documents": """You are a loan assistant writing an email to a loan applicant informing them
+that {bank_name} is willing to offer them a loan for their {loan_category} application, but needs
+more documents or information before finalizing it.
+
+Applicant name: {applicant_name}
+Documents/information requested by the bank (may be empty): {remarks}
+
+Write a short, friendly, professional email that:
+1. Tells them {bank_name} is interested in offering them the loan.
+2. Tells them the bank needs the additional documents/information listed below before proceeding.
+   If none were given, ask them to await further instructions from the bank rather than inventing
+   a list.
+Do NOT write a closing/sign-off line or a "reply to this email" instruction — both will be
+appended separately.
+
+Write only the email body text (no subject line, no markdown, no closing).
+""",
+}
+
+DECISION_SUBJECTS = {
+    "rejected": "Update on your {loan_category} application — {bank_name}",
+    "offer": "Good news on your {loan_category} application — {bank_name}",
+    "offer_more_documents": "Action needed on your {loan_category} application — {bank_name}",
+}
+
+
+DOCUMENTS_COMPLETE_PROMPT = """You are a loan assistant writing an email to a loan applicant
+who has just sent in the last of their required documents for their {loan_category} application.
+
+Applicant name: {applicant_name}
+
+Write a short, friendly, professional email that:
+1. Confirms all required documents have now been received.
+2. Tells them the documents are now being verified/processed, and that they will be contacted
+   with an update once verification is complete.
+Do NOT mention any portal, website, or a different email address. Do not add pricing, interest
+rate, or approval promises — this is only a receipt confirmation, not an approval decision.
+
+Write only the email body text (no subject line, no markdown).
+"""
+
+_UNCLEAR_INSTRUCTION_WITH_ATTACHMENTS = (
+    "Also add a short paragraph mentioning that {unclear_count} of the file(s) they sent could "
+    "not be read clearly (e.g. blurry, low resolution, or an unsupported format) — ask them to "
+    "resend those specific document(s) as a clearer, well-lit photo or scan. Do NOT say the "
+    "documents are invalid or wrong — say they could not be read clearly and ask for a clearer "
+    "copy. Do NOT list document names for this — that will be inserted separately."
+)
+_UNCLEAR_INSTRUCTION_NONE = "Do not mention unclear or unreadable files, since none were received."
+
+
+_REPLY_INSTRUCTION = "Simply reply to this email with the documents attached."
+_SIGN_OFF = "Best regards,\nLoan Assistant"
+
+
+def _render_numbered_documents(documents: list) -> str:
+    """
+    Renders a document list as a plain numbered list ("1. Aadhaar Card —
+    description", "2. PAN Card — description", ...) — built here in Python
+    rather than left to the LLM, since asking an LLM to both write free-form
+    prose AND hold a strict list format consistently is unreliable in
+    practice (observed output folded the list into narrative paragraphs
+    instead of keeping it scannable). This guarantees the exact same,
+    reliably formatted list on every email regardless of model output.
+    """
+    if not documents:
+        return "(none)"
+    lines = []
+    for i, doc in enumerate(documents, start=1):
+        description = doc.get("description")
+        if description:
+            lines.append(f"{i}. {doc['document']} — {description}")
+        else:
+            lines.append(f"{i}. {doc['document']}")
+    return "\n".join(lines)
+
+
+def _get_sender_email() -> str:
+    session = get_session()
+    try:
+        token = session.query(GmailToken).first()
+        if not token:
+            raise RuntimeError("No linked Gmail account found. Link one via /auth/link first.")
+        return token.email
+    finally:
+        session.close()
+
+
+def build_requirements_email_body(applicant_name: str, loan_type: str, short_code: str) -> tuple[str, dict]:
+    info = get_required_documents(loan_type)
+    logger.info(
+        "loan_apply agent: resolved loan_type=%r -> category=%r (%d general docs, %d category docs)",
+        loan_type, info["category"], len(info["general_documents"]), len(info["category_documents"]),
+    )
+
+    prompt = REQUIREMENTS_INTRO_PROMPT.format(
+        applicant_name=applicant_name or "Applicant",
+        loan_category=info["category"],
+    )
+
+    logger.info("loan_apply agent: composing email body with LLM (llama-3.3-70b-versatile)...")
+    response = llm.invoke(prompt)
+    intro = response.content if hasattr(response, "content") else str(response)
+    intro = intro.strip()
+    logger.info("loan_apply agent: LLM composed intro (%d chars)", len(intro))
+
+    # The numbered document list is rendered here in Python (see
+    # _render_numbered_documents), not by the LLM, so its format is exact
+    # and consistent on every email rather than whatever the model happens
+    # to produce for a "list documents" instruction embedded in free prose.
+    all_documents = info["general_documents"] + info["category_documents"]
+    document_list = _render_numbered_documents(all_documents)
+    application_id_note = (
+        f"Your application ID is {short_code}. If you reply to this email directly, you don't need to "
+        "do anything else — but if you send a new email instead of replying, please keep "
+        f"\"[application id: {short_code}]\" at the start of the subject line exactly as shown, so we can "
+        "match it to your application. It is case-sensitive."
+    )
+    body = (
+        f"{intro}\n\n{document_list}\n\n{_REPLY_INSTRUCTION}\n\n{application_id_note}\n\n{_SIGN_OFF}"
+    )
+
+    return body, info
+
+
+def _send_email(
+    sender_email: str,
+    applicant_email: str,
+    subject: str,
+    body: str,
+    thread_id: str | None = None,
+    in_reply_to_message_id: str | None = None,
+    submission_id: str | None = None,
+) -> dict:
+    service = build_gmail_service(sender_email)
+    mime = MIMEMultipart("alternative")
+    mime["To"] = applicant_email
+    mime["From"] = sender_email
+    mime["Subject"] = subject
+    if in_reply_to_message_id:
+        # in_reply_to_message_id is a Gmail API message id, not an RFC
+        # Message-Id — apply_threading_headers looks up the real header so
+        # the reply threads correctly in the RECIPIENT's mailbox too (Gmail
+        # threads the SENDER's own view by threadId regardless of headers,
+        # which is why this bug was invisible from the sending account).
+        apply_threading_headers(mime, service, in_reply_to_message_id)
+    mime.attach(MIMEText(body, "plain"))
+
+    raw = base64.urlsafe_b64encode(mime.as_bytes()).decode()
+    send_body = {"raw": raw}
+    if thread_id:
+        send_body["threadId"] = thread_id
+
+    result = service.users().messages().send(userId="me", body=send_body).execute()
+
+    # Single choke point every loan_apply email send goes through, so one
+    # emit() call here covers requirements/missing-documents/documents-
+    # complete/decision-update emails without repeating it at each call site.
+    emit("email_agent", "success", f"Sent \"{subject}\" to {applicant_email}", submission_id=submission_id)
+
+    return {"message_id": result.get("id"), "thread_id": result.get("threadId")}
+
+
+def _get_or_create_short_code(submission_id: str) -> str:
+    """
+    Returns the submission's short_code, generating and persisting one first
+    if it doesn't have one yet (e.g. rows created before this column existed —
+    see the b7d3f2a8c1e9 migration, which backfills those in bulk, but new
+    rows created via the ORM default get theirs here). Retries on a rare
+    UNIQUE collision, per generate_short_code's small but non-zero collision
+    chance across many submissions.
+    """
+    from db import UserFormSubmission
+
+    session = get_session()
+    try:
+        submission = session.get(UserFormSubmission, submission_id)
+        if submission.short_code:
+            return submission.short_code
+        for _ in range(5):
+            code = generate_short_code()
+            submission.short_code = code
+            try:
+                session.commit()
+                return code
+            except Exception:
+                session.rollback()
+        raise RuntimeError(f"Could not generate a unique short_code for submission {submission_id}")
+    finally:
+        session.close()
+
+
+def send_requirements_email(
+    applicant_name: str, applicant_email: str, loan_type: str, submission_id: str
+) -> dict:
+    """
+    Composes (via LLM) and sends an email to applicant_email listing the
+    required documents for loan_type, from the first linked Gmail account.
+    The subject is prefixed with a [application id: <short_code>] tag (see
+    application_id_tag) so a reply — even a brand-new message rather than a
+    same-thread Reply — can be matched back to this submission; see
+    celery_app.poll_loan_applicant_replies.
+    """
+    short_code = _get_or_create_short_code(submission_id)
+    body, info = build_requirements_email_body(applicant_name, loan_type, short_code)
+    sender_email = _get_sender_email()
+    logger.info("loan_apply agent: sending from %s to %s", sender_email, applicant_email)
+
+    sent = _send_email(
+        sender_email, applicant_email,
+        subject=application_id_tag(short_code, f"Required documents for your {info['category']} application"),
+        body=body,
+        submission_id=submission_id,
+    )
+
+    return {
+        "message_id": sent["message_id"],
+        "thread_id": sent["thread_id"],
+        "sender_email": sender_email,
+        "recipient_email": applicant_email,
+        "loan_category": info["category"],
+        "body": body,
+    }
+
+
+def build_missing_documents_email_body(
+    applicant_name: str, loan_category: str, missing_documents: list, unclear_count: int = 0
+) -> str:
+    if unclear_count > 0:
+        unclear_instruction = _UNCLEAR_INSTRUCTION_WITH_ATTACHMENTS.format(unclear_count=unclear_count)
+    else:
+        unclear_instruction = _UNCLEAR_INSTRUCTION_NONE
+
+    prompt = MISSING_DOCUMENTS_INTRO_PROMPT.format(
+        applicant_name=applicant_name or "Applicant",
+        loan_category=loan_category,
+        unclear_instruction=unclear_instruction,
+    )
+    logger.info(
+        "loan_apply agent: composing missing-documents follow-up with LLM (llama-3.3-70b-versatile), unclear_count=%d...",
+        unclear_count,
+    )
+    response = llm.invoke(prompt)
+    intro = response.content if hasattr(response, "content") else str(response)
+    intro = intro.strip()
+    logger.info("loan_apply agent: LLM composed missing-documents intro (%d chars)", len(intro))
+
+    # Same rationale as build_requirements_email_body: the numbered list is
+    # rendered deterministically in Python rather than left to the LLM.
+    document_list = _render_numbered_documents(missing_documents)
+    body = f"{intro}\n\n{document_list}\n\n{_REPLY_INSTRUCTION}\n\n{_SIGN_OFF}"
+    return body
+
+
+def send_missing_documents_email(
+    applicant_name: str,
+    applicant_email: str,
+    loan_category: str,
+    missing_documents: list,
+    thread_id: str,
+    in_reply_to_message_id: str,
+    unclear_count: int = 0,
+    submission_id: str | None = None,
+) -> dict:
+    """
+    Composes (via LLM) and sends a follow-up email listing the documents not
+    yet received, plus (if any) a note that some sent files couldn't be read
+    clearly and should be resent — threaded as a reply to the applicant's
+    original message so it stays in the same conversation.
+    """
+    body = build_missing_documents_email_body(applicant_name, loan_category, missing_documents, unclear_count)
+    sender_email = _get_sender_email()
+    logger.info("loan_apply agent: sending missing-documents follow-up from %s to %s", sender_email, applicant_email)
+
+    subject = f"Re: Required documents for your {loan_category} application"
+    if submission_id:
+        subject = application_id_tag(_get_or_create_short_code(submission_id), subject)
+
+    sent = _send_email(
+        sender_email, applicant_email,
+        subject=subject,
+        body=body,
+        thread_id=thread_id,
+        in_reply_to_message_id=in_reply_to_message_id,
+        submission_id=submission_id,
+    )
+
+    return {
+        "message_id": sent["message_id"],
+        "sender_email": sender_email,
+        "recipient_email": applicant_email,
+        "loan_category": loan_category,
+        "missing_documents": [d["document"] for d in missing_documents],
+        "unclear_count": unclear_count,
+        "body": body,
+    }
+
+
+def build_missing_application_id_email_body(applicant_name: str) -> str:
+    prompt = MISSING_APPLICATION_ID_PROMPT.format(applicant_name=applicant_name or "Applicant")
+    logger.info("loan_apply agent: composing missing-application-id reply with LLM (llama-3.3-70b-versatile)...")
+    response = llm.invoke(prompt)
+    body = response.content if hasattr(response, "content") else str(response)
+    body = body.strip()
+    body = f"{body}\n\n{_SIGN_OFF}"
+    logger.info("loan_apply agent: LLM composed missing-application-id body (%d chars)", len(body))
+    return body
+
+
+def send_missing_application_id_email(
+    applicant_name: str,
+    applicant_email: str,
+    subject: str,
+    thread_id: str | None = None,
+    in_reply_to_message_id: str | None = None,
+) -> dict:
+    """
+    Sent when a known applicant emails in (new message or reply) but no
+    [application id: ...] tag (see application_id_tag) can be found anywhere
+    in it — see celery_app.poll_loan_applicant_replies. Replies in the same
+    thread when one is available; otherwise sent as a fresh message, since a
+    new email with no recognizable application ID has no thread to reply into.
+    """
+    body = build_missing_application_id_email_body(applicant_name)
+    sender_email = _get_sender_email()
+    logger.info(
+        "loan_apply agent: sending missing-application-id reply from %s to %s", sender_email, applicant_email
+    )
+
+    sent = _send_email(
+        sender_email, applicant_email,
+        subject=subject,
+        body=body,
+        thread_id=thread_id,
+        in_reply_to_message_id=in_reply_to_message_id,
+    )
+
+    return {
+        "message_id": sent["message_id"],
+        "sender_email": sender_email,
+        "recipient_email": applicant_email,
+        "body": body,
+    }
+
+
+def build_documents_complete_email_body(applicant_name: str, loan_category: str) -> str:
+    prompt = DOCUMENTS_COMPLETE_PROMPT.format(
+        applicant_name=applicant_name or "Applicant",
+        loan_category=loan_category,
+    )
+    logger.info("loan_apply agent: composing documents-complete confirmation with LLM (llama-3.3-70b-versatile)...")
+    response = llm.invoke(prompt)
+    body = response.content if hasattr(response, "content") else str(response)
+    body = body.strip()
+    logger.info("loan_apply agent: LLM composed documents-complete body (%d chars)", len(body))
+    return body
+
+
+def send_documents_complete_email(
+    applicant_name: str,
+    applicant_email: str,
+    loan_category: str,
+    thread_id: str,
+    in_reply_to_message_id: str,
+    submission_id: str | None = None,
+) -> dict:
+    """
+    Composes (via LLM) and sends a confirmation email once all required
+    documents for the applicant's loan have been received and verified —
+    threaded as a reply to the applicant's original message.
+    """
+    body = build_documents_complete_email_body(applicant_name, loan_category)
+    sender_email = _get_sender_email()
+    logger.info("loan_apply agent: sending documents-complete confirmation from %s to %s", sender_email, applicant_email)
+
+    subject = f"Re: Required documents for your {loan_category} application"
+    if submission_id:
+        subject = application_id_tag(_get_or_create_short_code(submission_id), subject)
+
+    sent = _send_email(
+        sender_email, applicant_email,
+        subject=subject,
+        body=body,
+        thread_id=thread_id,
+        in_reply_to_message_id=in_reply_to_message_id,
+        submission_id=submission_id,
+    )
+
+    return {
+        "message_id": sent["message_id"],
+        "sender_email": sender_email,
+        "recipient_email": applicant_email,
+        "loan_category": loan_category,
+        "body": body,
+    }
+
+
+def build_decision_update_email_body(
+    status: str, applicant_name: str, loan_category: str, bank_name: str, remarks: str | None = None
+) -> str:
+    prompt = DECISION_PROMPTS[status].format(
+        applicant_name=applicant_name or "Applicant",
+        loan_category=loan_category,
+        bank_name=bank_name,
+        remarks=remarks or "",
+    )
+    logger.info(
+        "loan_apply agent: composing %s decision update with LLM (llama-3.3-70b-versatile) for bank %s...",
+        status, bank_name,
+    )
+    response = llm.invoke(prompt)
+    body = response.content if hasattr(response, "content") else str(response)
+    body = body.strip()
+    body = f"{body}\n\n{_SIGN_OFF}"
+    logger.info("loan_apply agent: LLM composed %s decision update body (%d chars)", status, len(body))
+    return body
+
+
+def send_decision_update_email(
+    status: str,
+    applicant_name: str,
+    applicant_email: str,
+    loan_category: str,
+    bank_name: str,
+    thread_id: str | None,
+    in_reply_to_message_id: str | None,
+    remarks: str | None = None,
+    submission_id: str | None = None,
+) -> dict:
+    """
+    Composes (via LLM) and sends an email telling the applicant that
+    bank_name has rejected / made an offer on / requested more documents for
+    their application — threaded as a reply to the applicant's original
+    message when a thread_id is available (it may not be, for submissions
+    created before thread_id was captured).
+
+    Called by celery_app.send_bank_decision_update_task once a bank records a
+    decision via POST /bank-notifications/{id}/decision (see
+    banks/notification_routes.py).
+    """
+    if status not in DECISION_PROMPTS:
+        raise ValueError(f"Unknown decision status: {status!r}")
+
+    body = build_decision_update_email_body(status, applicant_name, loan_category, bank_name, remarks)
+    sender_email = _get_sender_email()
+    subject = DECISION_SUBJECTS[status].format(loan_category=loan_category, bank_name=bank_name)
+    if thread_id:
+        subject = f"Re: {subject}"
+    if submission_id:
+        subject = application_id_tag(_get_or_create_short_code(submission_id), subject)
+    logger.info(
+        "loan_apply agent: sending %s decision update from %s to %s (bank=%s)",
+        status, sender_email, applicant_email, bank_name,
+    )
+
+    sent = _send_email(
+        sender_email, applicant_email,
+        subject=subject,
+        body=body,
+        thread_id=thread_id,
+        in_reply_to_message_id=in_reply_to_message_id,
+        submission_id=submission_id,
+    )
+
+    return {
+        "message_id": sent["message_id"],
+        "sender_email": sender_email,
+        "recipient_email": applicant_email,
+        "loan_category": loan_category,
+        "bank_name": bank_name,
+        "status": status,
+        "body": body,
+    }

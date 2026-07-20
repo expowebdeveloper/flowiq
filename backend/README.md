@@ -167,3 +167,8 @@ Required environment variables (`.env`):
 | `GROQ_API_KEY` | Groq API key powering the email agent's LLM (`llama-3.3-70b-versatile`) |
 | `DATABASE_URL` | Postgres connection string |
 | `JWT_SECRET` | Secret used to sign broker login tokens (defaults to an insecure dev value) |
+np,m
+
+
+
+PGPASSWORD=flowiq123 psql -U flowiq -h localhost -d flowiq -c "SELECT * FROM verified_payloads ORDER BY created_at DESC LIMIT 20;"

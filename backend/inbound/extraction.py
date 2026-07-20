@@ -56,7 +56,11 @@ def extract_parts(parts: list, service, user_id: str, message_id: str, email: st
                     userId=user_id, messageId=message_id, id=attachment_id
                 ).execute()
                 file_data = base64.urlsafe_b64decode(att_data["data"] + "==")
-                safe_name = f"{message_id}_{filename}"
+                # Gmail lets multiple attachments on one message share the same
+                # filename (e.g. several screenshots all named "image.png") —
+                # attachment_id is unique per attachment, so include a short
+                # slice of it to avoid one overwriting another on disk.
+                safe_name = f"{message_id}_{attachment_id[-10:]}_{filename}"
                 user_att_dir = ATTACHMENTS_DIR / email.replace("@", "_at_")
                 user_att_dir.mkdir(exist_ok=True)
                 file_path = user_att_dir / safe_name
