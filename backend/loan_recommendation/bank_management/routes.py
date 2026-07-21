@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from loan_recommendation.bank_management.schemas import BankCreate
 from db import get_db
+from loan_recommendation.bank_management.bank_login import sync_bank_login
 from loan_recommendation.bank_management.services import (
     BankManagementService
 )
@@ -35,10 +36,12 @@ def create_bank(
         db=db,
         bank=bank
     )
+    login_password = sync_bank_login(db, new_bank) if new_bank else None
     return {
         "success": True,
         "message": "Bank added successfully.",
-        "bank_id": new_bank.id if new_bank else None
+        "bank_id": new_bank.id if new_bank else None,
+        "login": {"email": new_bank.contact_email, "password": login_password} if login_password else None
     }
 
 
@@ -55,14 +58,18 @@ def update_bank(
     if not bank:
         return {"success": False, "message": "Bank not found."}
 
-    bank_service.update_bank(
+    old_name = bank.name
+
+    updated_bank = bank_service.update_bank(
         db=db,
         bank=bank,
         bank_data=bank_data
     )
+    login_password = sync_bank_login(db, updated_bank, old_name=old_name)
     return {
         "success": True,
-        "message": "Bank updated successfully."
+        "message": "Bank updated successfully.",
+        "login": {"email": updated_bank.contact_email, "password": login_password} if login_password else None
     }
 
 
