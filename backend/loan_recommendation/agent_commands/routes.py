@@ -25,7 +25,7 @@ global_router = APIRouter(
 )
 
 
-@global_router.get("/")
+@global_router.get("")
 def global_command_list(
     db: Session = Depends(get_db)
 ):
