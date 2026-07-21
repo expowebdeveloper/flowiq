@@ -23,7 +23,7 @@ depends_on: Union[str, Sequence[str], None] = None
 # is free to change later; this file has to keep working as a historical
 # record of what ran).
 _ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
-_LENGTH = 8
+_LENGTH = 8 
 
 
 def _generate_short_code() -> str:

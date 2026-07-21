@@ -39,6 +39,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 import { loanTypeLabel } from "@/features/loans/loanTypeMeta"
 import { HOME_LOAN_FIELD_LABELS } from "@/features/loan-apply/HomeLoanDetailsStep"
@@ -371,6 +372,56 @@ function InfoRow({
   )
 }
 
+/**
+ * Card whose body can be toggled shut — used for the lead detail sections
+ * (Personal information, {loan type} details, Extracted from documents) that
+ * otherwise push everything below them down the page. Defaults open so nothing
+ * changes for a first-time view; only collapsing hides content. Animates via
+ * a CSS grid-rows 0fr/1fr transition rather than a measured max-height, so it
+ * expands/collapses smoothly to the content's real height with no JS
+ * measurement or fixed pixel cap.
+ */
+function CollapsibleCard({
+  title,
+  icon: Icon,
+  defaultOpen = true,
+  children,
+}: {
+  title: string
+  icon?: typeof User
+  defaultOpen?: boolean
+  children: React.ReactNode
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <Card>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between gap-2 p-5 text-left"
+      >
+        <h3 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+          {Icon && <Icon className="size-4" />} {title}
+        </h3>
+        <ChevronDown
+          className={cn(
+            "size-4 shrink-0 text-muted-foreground transition-transform",
+            open && "rotate-180",
+          )}
+        />
+      </button>
+      <div
+        className="grid transition-[grid-template-rows] duration-200 ease-out"
+        style={{ gridTemplateRows: open ? "1fr" : "0fr" }}
+      >
+        <div className="overflow-hidden">
+          <CardContent className="px-5 pb-5 pt-0">{children}</CardContent>
+        </div>
+      </div>
+    </Card>
+  )
+}
+
 function LeadDetail({
   lead,
   requirements,
@@ -390,7 +441,7 @@ function LeadDetail({
   const hasOcrData = documentFieldEntries.length > 0
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div>
       <div className="mb-6 flex items-center gap-3">
         <Button variant="ghost" size="icon" className="size-8" onClick={onBack}>
           <ArrowLeft className="size-4" />
@@ -411,37 +462,34 @@ function LeadDetail({
 
       <LeadDocumentsDialog leadId={lead.id} open={documentsOpen} onOpenChange={setDocumentsOpen} />
 
-      <div className="space-y-4">
-        <LeadPipelineCard leadId={lead.id} />
+      <div className="grid gap-4 lg:grid-cols-5 lg:items-start">
+        <div className="space-y-4 lg:col-span-3">
+          <LeadPipelineCard leadId={lead.id} />
 
-        <Card>
-          <CardContent className="grid gap-4 p-5 sm:grid-cols-2">
-            <InfoRow icon={User} label="Full name" value={`${lead.first_name} ${lead.last_name}`} />
-            <InfoRow icon={Mail} label="Email" value={lead.email} />
-            {lead.phone_number && <InfoRow icon={Phone} label="Phone" value={lead.phone_number} />}
-            {lead.date_of_birth && <InfoRow icon={Cake} label="Date of birth" value={lead.date_of_birth} />}
-            {lead.ssn && <InfoRow icon={CreditCard} label="SSN" value={maskSsn(lead.ssn)} />}
-            <InfoRow icon={User} label="Gender" value={lead.gender} />
-            {lead.marital_status && (
-              <InfoRow icon={User} label="Marital status" value={lead.marital_status} />
-            )}
-            {lead.current_address && (
-              <InfoRow icon={MapPin} label="Current address" value={lead.current_address} />
-            )}
-            <InfoRow icon={MapPin} label="ZIP code" value={lead.zip_code} />
-            <InfoRow icon={Banknote} label="Loan type" value={loanTypeLabel(lead.loan_type)} />
-            <InfoRow icon={Banknote} label="Loan amount" value={formatCurrency(lead.loan_amount)} />
-            <InfoRow icon={FileText} label="FICO score" value={String(lead.fico_score)} />
-            <InfoRow icon={Calendar} label="Submitted" value={formatDate(lead.created_at)} />
-          </CardContent>
-        </Card>
+          <CollapsibleCard title="Personal information" icon={User}>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <InfoRow icon={User} label="Full name" value={`${lead.first_name} ${lead.last_name}`} />
+              <InfoRow icon={Mail} label="Email" value={lead.email} />
+              {lead.phone_number && <InfoRow icon={Phone} label="Phone" value={lead.phone_number} />}
+              {lead.date_of_birth && <InfoRow icon={Cake} label="Date of birth" value={lead.date_of_birth} />}
+              {lead.ssn && <InfoRow icon={CreditCard} label="SSN" value={maskSsn(lead.ssn)} />}
+              <InfoRow icon={User} label="Gender" value={lead.gender} />
+              {lead.marital_status && (
+                <InfoRow icon={User} label="Marital status" value={lead.marital_status} />
+              )}
+              {lead.current_address && (
+                <InfoRow icon={MapPin} label="Current address" value={lead.current_address} />
+              )}
+              <InfoRow icon={MapPin} label="ZIP code" value={lead.zip_code} />
+              <InfoRow icon={Banknote} label="Loan type" value={loanTypeLabel(lead.loan_type)} />
+              <InfoRow icon={Banknote} label="Loan amount" value={formatCurrency(lead.loan_amount)} />
+              <InfoRow icon={FileText} label="FICO score" value={String(lead.fico_score)} />
+              <InfoRow icon={Calendar} label="Submitted" value={formatDate(lead.created_at)} />
+            </div>
+          </CollapsibleCard>
 
-        {hasExtraDetails && (
-          <Card>
-            <CardContent className="p-5">
-              <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                {loanTypeLabel(lead.loan_type)} details
-              </h3>
+          {hasExtraDetails && (
+            <CollapsibleCard title="Loan details">
               <div className="grid gap-4 sm:grid-cols-2">
                 {Object.entries(lead.extra_loan_details ?? {}).map(([key, value]) => {
                   const meta = categoryFields.find((f) => f.field === key)
@@ -456,15 +504,10 @@ function LeadDetail({
                   )
                 })}
               </div>
-            </CardContent>
-          </Card>
-        )}
+            </CollapsibleCard>
+          )}
 
-        <Card>
-          <CardContent className="p-5">
-            <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-              <ScanLine className="size-4" /> Extracted from documents (OCR)
-            </h3>
+          <CollapsibleCard title="Documents Details" icon={ScanLine}>
             {hasOcrData ? (
               <div className="grid gap-4 sm:grid-cols-2">
                 {documentFieldEntries.map(([key, value]) => (
@@ -483,43 +526,45 @@ function LeadDetail({
                   : "No details could be extracted from the documents received so far."}
               </p>
             )}
-          </CardContent>
-        </Card>
+          </CollapsibleCard>
 
-        {lead.bank_decisions.length > 0 && (
-          <Card>
-            <CardContent className="p-5">
-              <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                <Landmark className="size-4" /> Bank decisions
-              </h3>
-              <div className="space-y-2">
-                {lead.bank_decisions.map((decision) => {
-                  const meta =
-                    BANK_DECISION_BADGE_META[decision.status] ?? BANK_DECISION_BADGE_META.offer_more_documents
-                  return (
-                    <div
-                      key={`${decision.bank_name}-${decision.decided_at}`}
-                      className="rounded-lg border border-border p-3"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                        <span className="text-sm font-medium">{decision.bank_name}</span>
-                        <div className="flex items-center gap-2">
-                          <Badge variant={meta.variant}>{meta.label}</Badge>
-                          <span className="text-xs text-muted-foreground">{formatDate(decision.decided_at)}</span>
+          {lead.bank_decisions.length > 0 && (
+            <Card>
+              <CardContent className="p-5">
+                <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                  <Landmark className="size-4" /> Bank decisions
+                </h3>
+                <div className="space-y-2">
+                  {lead.bank_decisions.map((decision) => {
+                    const meta =
+                      BANK_DECISION_BADGE_META[decision.status] ?? BANK_DECISION_BADGE_META.offer_more_documents
+                    return (
+                      <div
+                        key={`${decision.bank_name}-${decision.decided_at}`}
+                        className="rounded-lg border border-border p-3"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                          <span className="text-sm font-medium">{decision.bank_name}</span>
+                          <div className="flex items-center gap-2">
+                            <Badge variant={meta.variant}>{meta.label}</Badge>
+                            <span className="text-xs text-muted-foreground">{formatDate(decision.decided_at)}</span>
+                          </div>
                         </div>
+                        {decision.remarks && (
+                          <p className="mt-1.5 text-sm text-muted-foreground">{decision.remarks}</p>
+                        )}
                       </div>
-                      {decision.remarks && (
-                        <p className="mt-1.5 text-sm text-muted-foreground">{decision.remarks}</p>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        )}
+                    )
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
 
-        <ActivityLog leadId={lead.id} />
+        <div className="lg:sticky lg:top-4 lg:col-span-2">
+          <ActivityLog leadId={lead.id} />
+        </div>
       </div>
     </div>
   )
@@ -772,8 +817,8 @@ function ActivityLog({ leadId }: { leadId: string }) {
 
   return (
     <Card>
-      <CardContent className="p-5">
-        <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+      <CardContent className="flex max-h-[calc(100vh-6rem)] flex-col p-5">
+        <h3 className="mb-4 flex shrink-0 items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
           <Sparkles className="size-4" /> Activity log
         </h3>
 
@@ -792,15 +837,17 @@ function ActivityLog({ leadId }: { leadId: string }) {
         )}
 
         {events && events.length > 0 && (
-          <ol className="space-y-0">
-            {events.map((event, i) => (
-              <ActivityEventItem
-                key={eventKey(event, i)}
-                event={event}
-                isLast={i === events.length - 1}
-              />
-            ))}
-          </ol>
+          <ScrollArea className="-mr-5 min-h-0 flex-1 pr-5">
+            <ol className="space-y-0">
+              {events.map((event, i) => (
+                <ActivityEventItem
+                  key={eventKey(event, i)}
+                  event={event}
+                  isLast={i === events.length - 1}
+                />
+              ))}
+            </ol>
+          </ScrollArea>
         )}
       </CardContent>
     </Card>
@@ -883,7 +930,7 @@ function ActivityEventItem({ event, isLast }: { event: LeadActivityEvent; isLast
                 {event.internal_date_ms ? formatDateMs(event.internal_date_ms) : event.date}
               </span>
             </div>
-            <p className="mt-0.5 truncate text-xs text-muted-foreground">{event.subject}</p>
+            <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{event.subject}</p>
 
             <button
               type="button"
