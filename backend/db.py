@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timezone
 
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, Column, String, Text, DateTime, Boolean, UniqueConstraint, Float
+from sqlalchemy import create_engine, Column, String, Text, DateTime, Boolean, UniqueConstraint, Float, Integer
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import declarative_base, sessionmaker
 
@@ -184,6 +184,17 @@ class UserFormSubmission(Base):
     documents_status = Column(String, nullable=False, default="awaiting_documents")
     extracted_data = Column(Text, nullable=True)  # JSON: {field_name: value, ...} parsed from OCR text
     documents_processed_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Tracks the "missing documents" reminder emails sent while
+    # documents_status == "documents_incomplete" — see
+    # celery_app.send_missing_document_reminders, which sends at most 3 (one
+    # every ~10 minutes since documents_processed_at/last_reminder_sent_at),
+    # then stops so the broker takes over manually. reminder_count resets to
+    # 0 every time document_processing.process_loan_applicant_reply handles
+    # a new reply (see there), since any reply — even a still-incomplete one
+    # — is fresh applicant engagement and earns a fresh reminder allowance.
+    reminder_count = Column(Integer, nullable=False, default=0)
+    last_reminder_sent_at = Column(DateTime(timezone=True), nullable=True)
 
     # Gmail threadId of the requirements email that opened this applicant's
     # correspondence — set once, when send_requirements_email first sends

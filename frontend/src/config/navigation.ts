@@ -24,12 +24,12 @@ export interface NavItem {
 
 export const navItems: NavItem[] = [
   { label: "Dashboard", path: "/", icon: LayoutDashboard, description: "Overview" },
-  { label: "Notifications", path: "/notifications", icon: Bell, description: "New leads for your bank", bankOnly: true },
+  { label: "Customer", path: "/notifications", icon: Bell, description: "New leads for your bank", bankOnly: true },
   { label: "Leads", path: "/leads", icon: Users, description: "Applicant submissions & documents", brokerOnly: true },
   { label: "AI Activity", path: "/ai-activity", icon: Activity, description: "Live AI background processing", brokerOnly: true },
   { label: "Loans", path: "/loans", icon: PiggyBank, description: "Browse banks & apply", brokerOnly: true },
   { label: "Banks", path: "/banks", icon: Building2, description: "Manage banks & policies", brokerOnly: true },
-  { label: "Verify JSON", path: "/verify-json", icon: ClipboardCheck, description: "Validate application JSON" },
+  { label: "Verify JSON", path: "/verify-json", icon: ClipboardCheck, description: "Validate application JSON", brokerOnly: true },
   { label: "Loan Apply", path: "/loan-apply", icon: UserPlus, description: "Submit applicant details" },
   { label: "Settings", path: "/settings", icon: Settings, description: "Account & API config" },
 ]

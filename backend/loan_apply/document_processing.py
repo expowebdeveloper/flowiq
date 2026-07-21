@@ -65,7 +65,7 @@ def _match_document_label(filename: str, text: str, required_doc_names: list[str
     return None
 
 
-def _find_missing_documents(session, submission_id: str, required_docs: list[dict]) -> list[dict]:
+def find_missing_documents(session, submission_id: str, required_docs: list[dict]) -> list[dict]:
     """
     Compares the full required-documents list against every LoanApplyDocument
     ever received for this submission (across all of the applicant's replies,
@@ -73,6 +73,10 @@ def _find_missing_documents(session, submission_id: str, required_docs: list[dic
     some received attachment was matched to it AND passed content validation
     (content_verified is True) — an unreadable/wrong attachment counts the same
     as not having sent it at all.
+
+    Not underscore-prefixed — also called from
+    celery_app.send_missing_document_reminders to recompute a lead's still-
+    missing documents outside the reply-processing flow.
     """
     received = (
         session.query(LoanApplyDocument)
@@ -194,7 +198,7 @@ def process_loan_applicant_reply(mailbox_email: str, sender_email: str, message_
 
         session.flush()  # so _find_missing_documents' query sees the docs just added above
         required_docs = info["general_documents"] + info["category_documents"]
-        missing_docs = _find_missing_documents(session, submission_id, required_docs)
+        missing_docs = find_missing_documents(session, submission_id, required_docs)
         # Attachments sent THIS reply that didn't match any required document at
         # all — i.e. the applicant did send something, we just couldn't tell what
         # it was (blurry/low-res/wrong crop/etc.), as opposed to not sending it.
@@ -204,6 +208,12 @@ def process_loan_applicant_reply(mailbox_email: str, sender_email: str, message_
         submission.extracted_data = json.dumps(merged_fields)
         submission.documents_status = "documents_incomplete" if missing_docs else "documents_complete"
         submission.documents_processed_at = datetime.now(timezone.utc)
+        # Any reply — even one that leaves documents still incomplete — is
+        # fresh applicant engagement, so it earns a fresh 3-reminder
+        # allowance rather than picking up where a stale count left off. See
+        # celery_app.send_missing_document_reminders for where this is spent.
+        submission.reminder_count = 0
+        submission.last_reminder_sent_at = None
         applicant_name = f"{submission.first_name} {submission.last_name}"
         loan_category = info["category"]
         session.commit()

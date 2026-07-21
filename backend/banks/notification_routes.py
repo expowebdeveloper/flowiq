@@ -1,12 +1,14 @@
 from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import Response
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 from auth import require_bank
 from banks.pdf import build_applicant_pdf
-from db import BankDecision, BankNotification, UserFormSubmission, get_session
+from db import BankDecision, BankNotification, LoanApplyDocument, UserFormSubmission, get_session
+from loan_apply.schemas import LoanApplyDocumentOut
 
 router = APIRouter(prefix="/bank-notifications", tags=["bank-notifications"])
 
@@ -210,3 +212,86 @@ def get_notification_pdf(notification_id: str, current_user: dict = Depends(requ
         media_type="application/pdf",
         headers={"Content-Disposition": f'inline; filename="applicant-{submission_id}.pdf"'},
     )
+
+
+def _submission_id_for_bank_notification(notification_id: str, bank_name: str) -> str:
+    """
+    Resolves notification_id -> its submission_id, scoped to the current
+    bank — same check as get_notification_pdf above, so a bank can only ever
+    reach documents for a lead it was actually notified about (not any
+    submission_id in the system, which is what letting the bank call
+    loan_apply's require_broker-only document routes directly would allow).
+    """
+    session = get_session()
+    try:
+        notification = session.get(BankNotification, notification_id)
+        if not notification or notification.bank_name != bank_name:
+            raise HTTPException(status_code=404, detail="Notification not found")
+        return notification.submission_id
+    finally:
+        session.close()
+
+
+@router.get("/{notification_id}/documents", response_model=list[LoanApplyDocumentOut])
+def list_notification_documents(notification_id: str, current_user: dict = Depends(require_bank)):
+    """
+    Every document attachment the applicant behind this notification has
+    sent in so far — mirrors loan_apply.routes.list_loan_apply_documents,
+    but scoped to notification_id/the current bank rather than
+    require_broker, since a bank has no broker JWT to call that route with.
+    """
+    submission_id = _submission_id_for_bank_notification(notification_id, current_user["bank_name"])
+
+    session = get_session()
+    try:
+        docs = (
+            session.query(LoanApplyDocument)
+            .filter(LoanApplyDocument.submission_id == submission_id)
+            .order_by(LoanApplyDocument.uploaded_at.asc())
+            .all()
+        )
+        return [
+            LoanApplyDocumentOut(
+                id=d.id,
+                filename=d.filename,
+                content_type=d.content_type,
+                label=d.label,
+                content_verified=d.content_verified,
+                uploaded_at=d.uploaded_at.isoformat(),
+            )
+            for d in docs
+        ]
+    finally:
+        session.close()
+
+
+@router.get("/{notification_id}/documents/{document_id}")
+def download_notification_document(
+    notification_id: str,
+    document_id: str,
+    disposition: str = "attachment",
+    current_user: dict = Depends(require_bank),
+):
+    """
+    Serves one document from the applicant behind this notification —
+    mirrors loan_apply.routes.download_loan_apply_document, scoped to
+    notification_id/the current bank (see _submission_id_for_bank_notification).
+    """
+    if disposition not in ("attachment", "inline"):
+        raise HTTPException(status_code=400, detail="disposition must be 'attachment' or 'inline'")
+
+    submission_id = _submission_id_for_bank_notification(notification_id, current_user["bank_name"])
+
+    session = get_session()
+    try:
+        doc = session.get(LoanApplyDocument, document_id)
+        if not doc or doc.submission_id != submission_id:
+            raise HTTPException(status_code=404, detail="Document not found")
+
+        file_path = Path(doc.saved_path)
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail="File not found on disk")
+
+        return FileResponse(str(file_path), filename=doc.filename, content_disposition_type=disposition)
+    finally:
+        session.close()

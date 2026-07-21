@@ -10,6 +10,15 @@ class BankDecisionOut(BaseModel):
     decided_at: str
 
 
+class LoanApplyDocumentOut(BaseModel):
+    id: str
+    filename: str
+    content_type: Optional[str] = None
+    label: Optional[str] = None
+    content_verified: Optional[bool] = None
+    uploaded_at: str
+
+
 class LoanApplyCreate(BaseModel):
     first_name: str = Field(min_length=1)
     last_name: str = Field(min_length=1)

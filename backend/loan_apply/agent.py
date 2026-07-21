@@ -1,4 +1,5 @@
 import base64
+import html
 import logging
 import re
 import secrets
@@ -32,6 +33,17 @@ SHORT_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz
 SHORT_CODE_LENGTH = 8
 APPLICATION_ID_RE = re.compile(r"\[application id:\s*([0-9A-Za-z]{8})\]", re.IGNORECASE)
 
+# Fallback for when an applicant types/pastes the bare code without the
+# brackets our own emails send (e.g. "application id: nJAiByz2", or just
+# "nJAiByz2" on its own) — matches any standalone 8-character token from the
+# same alphanumeric charset, word-bounded so it doesn't grab a substring out
+# of a longer word. This is intentionally loose: on its own an 8-char token
+# could be any random word, so extract_candidate_codes() never treats a match
+# here as authoritative — see its docstring and the caller in
+# celery_app.poll_loan_applicant_replies, which only accepts a candidate that
+# also resolves to a real UserFormSubmission.short_code.
+BARE_CODE_RE = re.compile(r"\b[0-9A-Za-z]{8}\b")
+
 
 def generate_short_code() -> str:
     return "".join(secrets.choice(SHORT_CODE_ALPHABET) for _ in range(SHORT_CODE_LENGTH))
@@ -52,6 +64,30 @@ def extract_application_id(text: str) -> str | None:
     """
     match = APPLICATION_ID_RE.search(text or "")
     return match.group(1) if match else None
+
+
+def extract_candidate_codes(text: str) -> list[str]:
+    """
+    Every plausible application-id code in `text`, most-confident first: the
+    bracketed [application id: ...] tag (if present) always comes first,
+    followed by every standalone 8-character alphanumeric token found
+    anywhere (see BARE_CODE_RE) — covers an applicant typing/pasting just the
+    bare code without the brackets, e.g. copying "your application ID is
+    nJAiByz2" out of the requirements email body.
+    Order matters: no ranking beyond "the real tag wins over a loose
+    guess" — none of these are trusted as a real match on their own. The
+    caller (celery_app.poll_loan_applicant_replies) must check each against
+    UserFormSubmission.short_code and use the first that actually resolves.
+    """
+    tagged = extract_application_id(text)
+    bare = BARE_CODE_RE.findall(text or "")
+    seen = set()
+    candidates = []
+    for code in ([tagged] if tagged else []) + bare:
+        if code not in seen:
+            seen.add(code)
+            candidates.append(code)
+    return candidates
 
 llm = ChatGroq(
     model="llama-3.3-70b-versatile",
@@ -93,6 +129,30 @@ sign-off line or a "reply to this email" instruction — both will be appended s
 
 Write only that opening (no subject line, no markdown, no document list, no closing).
 """
+
+DOCUMENT_REMINDER_INTRO_PROMPT = """You are a loan assistant sending an automated reminder to a loan applicant
+who has not sent all the documents required for their {loan_category} application. This is reminder
+#{reminder_number} of {max_reminders} — no reply has been received since the last message.
+
+Applicant name: {applicant_name}
+
+Write ONLY a short, polite, professional opening that:
+1. Reminds them their {loan_category} application is still on hold pending the documents listed below.
+   Do NOT write out the document names or a list yourself — the list will be inserted separately.
+2. {escalation_instruction}
+Do NOT mention any portal, website, or a different email address to send documents to, since none
+exists. Do not add pricing, interest rate, or approval promises. Do NOT write a closing/sign-off
+line or a "reply to this email" instruction — both will be appended separately.
+
+Write only that opening (no subject line, no markdown, no document list, no closing).
+"""
+
+_REMINDER_ESCALATION_NORMAL = "Keep the tone light and helpful, as an early reminder."
+_REMINDER_ESCALATION_FINAL = (
+    "Mention this is the final automated reminder, and that if the documents aren't received, "
+    "someone from the team will follow up with them directly."
+)
+
 
 MISSING_APPLICATION_ID_PROMPT = """You are a loan assistant writing an email to someone who emailed in
 about their loan application, but you could not tell which application it belongs to.
@@ -229,6 +289,38 @@ def _get_sender_email() -> str:
         session.close()
 
 
+def _get_latest_thread_message_id(sender_email: str, thread_id: str) -> str | None:
+    """
+    Returns the Gmail API message id of the most recent message in thread_id,
+    for use as in_reply_to_message_id. Reminders aren't a reply to any one
+    specific inbound message (see send_document_reminder_email), but without
+    real In-Reply-To/References headers a reminder only threads correctly in
+    the SENDER's own mailbox (Gmail groups by threadId there regardless of
+    headers) — every other client, including the applicant's own Gmail,
+    threads by chasing those headers (see inbound.threading's module
+    docstring) and would show each reminder as a new, disconnected thread.
+    Chaining off whatever the last message actually is (applicant's or our
+    own) keeps every reminder in that same real thread for the recipient too.
+    Returns None if the thread can't be fetched (caller should just omit
+    threading headers rather than fail the send).
+    """
+    try:
+        service = build_gmail_service(sender_email)
+        thread = (
+            service.users()
+            .threads()
+            .get(userId="me", id=thread_id, format="minimal")
+            .execute()
+        )
+        messages = thread.get("messages", [])
+        if not messages:
+            return None
+        return messages[-1]["id"]
+    except Exception:
+        logger.exception("loan_apply agent: failed to fetch latest message in thread %s", thread_id)
+        return None
+
+
 def build_requirements_email_body(applicant_name: str, loan_type: str, short_code: str) -> tuple[str, dict]:
     info = get_required_documents(loan_type)
     logger.info(
@@ -266,6 +358,49 @@ def build_requirements_email_body(applicant_name: str, loan_type: str, short_cod
     return body, info
 
 
+_REMINDER_HTML_BANNER = (
+    "<div style=\"background:#fff8e1;border-left:4px solid #f5a623;padding:10px 14px;"
+    "margin-bottom:16px;font-family:Arial, sans-serif;font-size:13px;color:#7a5b00;\">"
+    "&#128337; <strong>Reminder {reminder_number} of {max_reminders}</strong> — automated follow-up, "
+    "no reply received since our last message.</div>"
+)
+
+
+def _body_to_html(body: str, html_banner: str | None = None) -> str:
+    """
+    Converts a plain-text email body (built from `\\n`-joined paragraphs, see
+    build_requirements_email_body et al.) into HTML with explicit <br>/<p>
+    tags, for the "text/html" alternative part _send_email attaches alongside
+    the plain-text one.
+
+    Plain text alone leaves line-wrapping up to whichever client renders it:
+    Gmail's own Sent view (same account reading its own message) tends to
+    preserve single line breaks, but many receiving clients collapse them and
+    only honor blank-line paragraph breaks — which folded every numbered
+    document list into one run-together paragraph for the recipient, even
+    though it looked correctly formatted to the sender. An explicit HTML part
+    renders identically everywhere regardless of how a client treats
+    plain-text wrapping.
+
+    html_banner, if given, is raw HTML (already-formatted, not escaped)
+    inserted before the body content, replacing the plain-text body's own
+    leading "[Reminder N of M ...]" bracketed line (see
+    build_document_reminder_email_body) so the reminder marker isn't shown
+    twice — once as a styled callout, once as its plain-text equivalent.
+    """
+    paragraphs = body.split("\n\n")
+    if html_banner and paragraphs and paragraphs[0].startswith("["):
+        paragraphs = paragraphs[1:]
+    html_paragraphs = [
+        "<p>" + html.escape(paragraph).replace("\n", "<br>") + "</p>"
+        for paragraph in paragraphs
+    ]
+    return (
+        "<html><body style=\"font-family: Arial, sans-serif; font-size: 14px; "
+        "white-space: normal;\">" + (html_banner or "") + "".join(html_paragraphs) + "</body></html>"
+    )
+
+
 def _send_email(
     sender_email: str,
     applicant_email: str,
@@ -274,6 +409,7 @@ def _send_email(
     thread_id: str | None = None,
     in_reply_to_message_id: str | None = None,
     submission_id: str | None = None,
+    html_banner: str | None = None,
 ) -> dict:
     service = build_gmail_service(sender_email)
     mime = MIMEMultipart("alternative")
@@ -287,7 +423,12 @@ def _send_email(
         # threads the SENDER's own view by threadId regardless of headers,
         # which is why this bug was invisible from the sending account).
         apply_threading_headers(mime, service, in_reply_to_message_id)
+    # Both parts carry the same content — text/plain first, then text/html,
+    # per RFC 2046's requirement that "multipart/alternative" parts be
+    # ordered from least to most preferred so an HTML-capable client renders
+    # the html part instead of falling back to plain text.
     mime.attach(MIMEText(body, "plain"))
+    mime.attach(MIMEText(_body_to_html(body, html_banner=html_banner), "html"))
 
     raw = base64.urlsafe_b64encode(mime.as_bytes()).decode()
     send_body = {"raw": raw}
@@ -435,6 +576,112 @@ def send_missing_documents_email(
         "loan_category": loan_category,
         "missing_documents": [d["document"] for d in missing_documents],
         "unclear_count": unclear_count,
+        "body": body,
+    }
+
+
+MAX_DOCUMENT_REMINDERS = 3
+
+
+def build_document_reminder_email_body(
+    applicant_name: str, loan_category: str, missing_documents: list, reminder_number: int
+) -> str:
+    escalation_instruction = (
+        _REMINDER_ESCALATION_FINAL if reminder_number >= MAX_DOCUMENT_REMINDERS else _REMINDER_ESCALATION_NORMAL
+    )
+    prompt = DOCUMENT_REMINDER_INTRO_PROMPT.format(
+        applicant_name=applicant_name or "Applicant",
+        loan_category=loan_category,
+        reminder_number=reminder_number,
+        max_reminders=MAX_DOCUMENT_REMINDERS,
+        escalation_instruction=escalation_instruction,
+    )
+    logger.info(
+        "loan_apply agent: composing document reminder #%d/%d with LLM (llama-3.3-70b-versatile)...",
+        reminder_number, MAX_DOCUMENT_REMINDERS,
+    )
+    response = llm.invoke(prompt)
+    intro = response.content if hasattr(response, "content") else str(response)
+    intro = intro.strip()
+    logger.info("loan_apply agent: LLM composed reminder intro (%d chars)", len(intro))
+
+    document_list = _render_numbered_documents(missing_documents)
+    banner = f"[Reminder {reminder_number} of {MAX_DOCUMENT_REMINDERS} — automated follow-up]"
+    body = f"{banner}\n\n{intro}\n\n{document_list}\n\n{_REPLY_INSTRUCTION}\n\n{_SIGN_OFF}"
+    return body
+
+
+def send_document_reminder_email(
+    applicant_name: str,
+    applicant_email: str,
+    loan_category: str,
+    missing_documents: list,
+    reminder_number: int,
+    thread_id: str | None,
+    submission_id: str,
+) -> dict:
+    """
+    Composes (via LLM) and sends one automated "you still haven't sent all
+    your documents" reminder — see celery_app.send_missing_document_reminders,
+    which calls this at most MAX_DOCUMENT_REMINDERS times per lead, spaced
+    ~10 minutes apart, then stops (the broker takes over from there).
+    Threaded into the applicant's existing conversation when a thread_id is
+    available: Gmail's threadId keeps it grouped in the SENDER's own mailbox
+    regardless of headers, but the applicant's own mail client threads by
+    chasing the real In-Reply-To/References header chain (see
+    inbound.threading's module docstring) — so this also looks up the
+    thread's latest message via _get_latest_thread_message_id and replies to
+    it, even though a reminder isn't "in reply to" any one specific inbound
+    message. Without that, every reminder showed up as a brand-new,
+    disconnected thread in the applicant's inbox instead of staying in the
+    original conversation.
+    """
+    body = build_document_reminder_email_body(applicant_name, loan_category, missing_documents, reminder_number)
+    sender_email = _get_sender_email()
+    logger.info(
+        "loan_apply agent: sending document reminder #%d from %s to %s",
+        reminder_number, sender_email, applicant_email,
+    )
+
+    # Same base subject text as send_missing_documents_email/
+    # send_documents_complete_email ("Re: Required documents for your ...")
+    # rather than distinct wording ("Reminder: documents still needed...") —
+    # Gmail's inbox LIST view (as opposed to a thread's own detail view,
+    # which correctly follows In-Reply-To/References regardless of subject)
+    # additionally weighs subject-line similarity when deciding whether to
+    # group a message with the rest of its conversation, so a subject that
+    # diverges enough from the rest of the thread can show up as a separate
+    # top-level row there even though it's the same underlying Gmail thread.
+    # The "this is a reminder" framing already lives in the body/HTML banner
+    # (see build_document_reminder_email_body, _REMINDER_HTML_BANNER).
+    subject = application_id_tag(
+        _get_or_create_short_code(submission_id),
+        f"Re: Required documents for your {loan_category} application",
+    )
+
+    in_reply_to_message_id = _get_latest_thread_message_id(sender_email, thread_id) if thread_id else None
+
+    html_banner = _REMINDER_HTML_BANNER.format(
+        reminder_number=reminder_number, max_reminders=MAX_DOCUMENT_REMINDERS,
+    )
+
+    sent = _send_email(
+        sender_email, applicant_email,
+        subject=subject,
+        body=body,
+        thread_id=thread_id,
+        in_reply_to_message_id=in_reply_to_message_id,
+        submission_id=submission_id,
+        html_banner=html_banner,
+    )
+
+    return {
+        "message_id": sent["message_id"],
+        "sender_email": sender_email,
+        "recipient_email": applicant_email,
+        "loan_category": loan_category,
+        "reminder_number": reminder_number,
+        "missing_documents": [d["document"] for d in missing_documents],
         "body": body,
     }
 
