@@ -69,13 +69,13 @@ export function ChatPage() {
   )
 
   return (
-    <div className="flex h-[calc(100vh-3.5rem)]">
+    <div className="flex h-[calc(100vh_-_3.5rem)]">
       <aside className="w-72 shrink-0 border-r border-border">
         <div className="flex items-center gap-2 border-b border-border px-4 py-3">
           <Users className="size-4 text-muted-foreground" />
           <span className="text-sm font-medium">Users</span>
         </div>
-        <ScrollArea className="h-[calc(100%-3rem)]">
+        <ScrollArea className="h-[calc(100%_-_3rem)]">
           {isLoadingUsers ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="size-4 animate-spin text-muted-foreground" />

@@ -267,7 +267,7 @@ export function MailPage() {
   const threadRows = groupByThread(state.messages)
 
   return (
-    <div className="flex h-[calc(100svh-6rem)] gap-6">
+    <div className="flex h-[calc(100svh_-_6rem)] gap-6">
       {/* Left rail */}
       <div className="hidden w-56 shrink-0 flex-col gap-4 md:flex">
         <Button className="h-12 w-full justify-start gap-2 rounded-2xl shadow-sm" onClick={() => setIsComposeOpen(true)}>

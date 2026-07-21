@@ -990,7 +990,7 @@ function ActivityLog({ leadId }: { leadId: string }) {
 
   return (
     <Card>
-      <CardContent className="flex max-h-[calc(100vh-6rem)] flex-col p-5">
+      <CardContent className="flex max-h-[calc(100vh_-_6rem)] flex-col p-5">
         <h3 className="mb-4 flex shrink-0 items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
           <Sparkles className="size-4" /> Activity log
         </h3>

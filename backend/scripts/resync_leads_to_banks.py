@@ -2,8 +2,12 @@
 One-off backfill script: re-runs bank syncing for every lead whose documents
 were already marked complete before banks/notifications.py was switched from
 the legacy BankAccount/bank_loan_rates lookup to the admin-managed
-banks/bank_loan_policies tables. notify_banks_of_new_lead is idempotent per
-(submission, bank), so this is safe to run more than once.
+banks/bank_loan_policies tables. This actually emails each eligible bank's
+contact_email (via the lead's linked Gmail mailbox) and only records a
+BankNotification row once that email sends successfully.
+notify_banks_of_new_lead is idempotent per (submission, bank) — it skips
+banks already notified — so this is safe to run more than once without
+duplicate emails.
 
 Usage: python3 scripts/resync_leads_to_banks.py
 """
