@@ -69,6 +69,8 @@ const ALL_LOAN_DETAIL_FIELD_LABELS: Record<string, string> = {
   ...CAR_LOAN_FIELD_LABELS,
   ...EDUCATION_LOAN_FIELD_LABELS,
   ...GOLD_LOAN_FIELD_LABELS,
+  checking_account_balance: "Checking Account Balance",
+  savings_account_balance: "Savings Account Balance",
 }
 
 const LOAN_TYPE_TO_CATEGORY_KEY: Record<string, string> = {
@@ -352,21 +354,42 @@ export function LeadsPage() {
   )
 }
 
+/**
+ * verified: true shows a green check (a matching document was received),
+ * false shows an amber alert (a document was received but didn't match),
+ * undefined/null shows nothing (no such document received yet) — see
+ * LoanApplyResult.annual_income_verified, the only field this is wired up
+ * for today.
+ */
 function InfoRow({
   icon: Icon,
   label,
   value,
+  verified,
 }: {
   icon: typeof User
   label: string
   value: string
+  verified?: boolean | null
 }) {
   return (
     <div className="flex items-start gap-3">
       <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
       <div className="min-w-0">
         <div className="text-xs text-muted-foreground">{label}</div>
-        <div className="truncate text-sm font-medium">{value}</div>
+        <div className="flex items-center gap-2">
+          <span className="truncate text-sm font-medium">{value}</span>
+          {verified === true && (
+            <span className="flex items-center gap-1 text-sm font-medium text-success">
+              <CheckCircle2 className="size-4 shrink-0" /> Verified
+            </span>
+          )}
+          {verified === false && (
+            <span className="flex items-center gap-1 text-sm font-medium text-warning">
+              <AlertTriangle className="size-4 shrink-0" /> Mismatch
+            </span>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -500,6 +523,7 @@ function LeadDetail({
                       icon={FileText}
                       label={label}
                       value={value ? formatExtractedValue(key, value) : "—"}
+                      verified={key === "annual_income" ? lead.annual_income_verified : undefined}
                     />
                   )
                 })}

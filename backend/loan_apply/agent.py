@@ -154,6 +154,29 @@ _REMINDER_ESCALATION_FINAL = (
 )
 
 
+ANNUAL_INCOME_MISMATCH_PROMPT = """You are a loan assistant writing a follow-up email to a loan applicant
+who has sent in an Annual Income verification document for their {loan_category} application, but the
+certified income figure on that document does not match the annual income they declared on their
+application.
+
+Applicant name: {applicant_name}
+
+Write ONLY a short, polite, professional message that:
+1. Thanks them for sending the Annual Income document.
+2. Explains that the certified income figure on the document they sent does not match the annual
+   income declared on their application, so it could not be verified.
+3. Asks them to please resend a correct, valid Annual Income verification document that matches the
+   income they declared.
+Do NOT state either figure or number yourself — do not invent or repeat specific amounts. Do NOT say
+the document is fake, fraudulent, or invalid in general — only that the figures do not match. Do NOT
+mention any portal, website, or a different email address to send documents to, since none exists. Do
+not add pricing, interest rate, or approval promises. Do NOT write a closing/sign-off line or a "reply
+to this email" instruction — both will be appended separately.
+
+Write only that message (no subject line, no markdown, no closing).
+"""
+
+
 MISSING_APPLICATION_ID_PROMPT = """You are a loan assistant writing an email to someone who emailed in
 about their loan application, but you could not tell which application it belongs to.
 
@@ -206,17 +229,14 @@ that {bank_name} is willing to offer them a loan for their {loan_category} appli
 more documents or information before finalizing it.
 
 Applicant name: {applicant_name}
-Documents/information requested by the bank (may be empty): {remarks}
 
-Write a short, friendly, professional email that:
-1. Tells them {bank_name} is interested in offering them the loan.
-2. Tells them the bank needs the additional documents/information listed below before proceeding.
-   If none were given, ask them to await further instructions from the bank rather than inventing
-   a list.
-Do NOT write a closing/sign-off line or a "reply to this email" instruction — both will be
-appended separately.
+Write ONLY a short, friendly, professional opening that tells them {bank_name} is interested in
+offering them the loan, but needs some additional documents or information first. Do NOT write out
+what is needed yourself — that will be inserted separately, verbatim, right after your text, exactly
+as the bank specified it. Do NOT write a closing/sign-off line or a "reply to this email"
+instruction — both will be appended separately.
 
-Write only the email body text (no subject line, no markdown, no closing).
+Write only that opening (no subject line, no markdown, no closing).
 """,
 }
 
@@ -580,6 +600,70 @@ def send_missing_documents_email(
     }
 
 
+def build_annual_income_mismatch_email_body(applicant_name: str, loan_category: str) -> str:
+    prompt = ANNUAL_INCOME_MISMATCH_PROMPT.format(
+        applicant_name=applicant_name or "Applicant",
+        loan_category=loan_category,
+    )
+    logger.info("loan_apply agent: composing annual-income-mismatch follow-up with LLM (llama-3.3-70b-versatile)...")
+    response = llm.invoke(prompt)
+    intro = response.content if hasattr(response, "content") else str(response)
+    intro = intro.strip()
+    logger.info("loan_apply agent: LLM composed annual-income-mismatch body (%d chars)", len(intro))
+
+    document_list = _render_numbered_documents([{"document": "Annual Income"}])
+    body = f"{intro}\n\n{document_list}\n\n{_REPLY_INSTRUCTION}\n\n{_SIGN_OFF}"
+    return body
+
+
+def send_annual_income_mismatch_email(
+    applicant_name: str,
+    applicant_email: str,
+    loan_category: str,
+    declared_annual_income: str,
+    thread_id: str,
+    in_reply_to_message_id: str,
+    submission_id: str | None = None,
+) -> dict:
+    """
+    Composes (via LLM) and sends a follow-up email telling the applicant their
+    Annual Income document's certified figure doesn't match the annual income
+    they declared on their application — threaded as a reply to the
+    applicant's original message. Called by
+    loan_apply.document_processing.process_loan_applicant_reply once it
+    detects the mismatch; declared_annual_income is accepted for logging/
+    the return value only, never included in the email body itself (see
+    ANNUAL_INCOME_MISMATCH_PROMPT, which explicitly forbids stating figures).
+    """
+    body = build_annual_income_mismatch_email_body(applicant_name, loan_category)
+    sender_email = _get_sender_email()
+    logger.info(
+        "loan_apply agent: sending annual-income-mismatch follow-up from %s to %s", sender_email, applicant_email
+    )
+
+    subject = f"Re: Required documents for your {loan_category} application"
+    if submission_id:
+        subject = application_id_tag(_get_or_create_short_code(submission_id), subject)
+
+    sent = _send_email(
+        sender_email, applicant_email,
+        subject=subject,
+        body=body,
+        thread_id=thread_id,
+        in_reply_to_message_id=in_reply_to_message_id,
+        submission_id=submission_id,
+    )
+
+    return {
+        "message_id": sent["message_id"],
+        "sender_email": sender_email,
+        "recipient_email": applicant_email,
+        "loan_category": loan_category,
+        "declared_annual_income": declared_annual_income,
+        "body": body,
+    }
+
+
 MAX_DOCUMENT_REMINDERS = 3
 
 
@@ -801,6 +885,15 @@ def build_decision_update_email_body(
     response = llm.invoke(prompt)
     body = response.content if hasattr(response, "content") else str(response)
     body = body.strip()
+
+    if status == "offer_more_documents" and remarks:
+        # Appended verbatim rather than left to the LLM (see DECISION_PROMPTS'
+        # instruction not to write this itself) — the bank's exact wording
+        # (e.g. naming a specific document like "Employment Verification
+        # Letter") must reach the applicant intact, never paraphrased,
+        # summarized, or dropped by the model.
+        body = f"{body}\n\nWhat {bank_name} needs from you:\n{remarks.strip()}\n\n{_REPLY_INSTRUCTION}"
+
     body = f"{body}\n\n{_SIGN_OFF}"
     logger.info("loan_apply agent: LLM composed %s decision update body (%d chars)", status, len(body))
     return body

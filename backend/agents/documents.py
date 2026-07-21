@@ -284,14 +284,18 @@ def validate_pay_stub(extracted_text: str) -> bool:
     """Heuristic: US pay stubs/earnings statements name themselves as such and print a
     pay/reporting period plus a year-to-date breakdown — distinct from validate_salary_slip's
     India-specific payslip terminology (HRA/PF/TDS), since "Recent Pay Stubs" and "Latest N
-    Months Salary Slips" are separate document requirements for different loan categories."""
+    Months Salary Slips" are separate document requirements for different loan categories.
+    Requires BOTH identity and structure terms (not either alone) — an OR let an unrelated
+    document (an annual income certification letter with a footnote mentioning "a final pay
+    stub" only in passing, with no actual pay-stub structure) false-positive as a pay stub and
+    win the label match ahead of its real, more specific document type."""
     text_lower = (extracted_text or "").lower()
     has_identity_terms = _keyword_hit(text_lower, ("pay stub", "paystub", "earnings statement"), min_hits=1)
     has_structure_terms = _keyword_hit(text_lower, (
         "pay period", "reporting period", "pay date", "ytd", "year to date", "current pay",
         "gross pay", "net pay",
     ), min_hits=2)
-    return has_identity_terms or has_structure_terms
+    return has_identity_terms and has_structure_terms
 
 
 EIN_RE = re.compile(r"\b\d{2}-\d{7}\b")  # Employer Identification Number: XX-XXXXXXX
@@ -365,13 +369,16 @@ def validate_tax_return(extracted_text: str) -> bool:
     Return") and prints its distinctive line-item terminology (adjusted gross income,
     filing status, wages and salaries) — a specific enough signature that this isn't
     confused with a W-2 or pay stub, which report similar wage figures but never use
-    1040-specific line-item language."""
+    1040-specific line-item language. Requires BOTH identity and line-item terms (not
+    either alone) — an OR let a different IRS-adjacent form (an employer income
+    certification letter titled "FORM 1040-ES(W)", which fuzzy-matches "form 1040" but
+    has none of the actual 1040 line-item content) false-positive as a tax return."""
     text_lower = (extracted_text or "").lower()
     has_identity_terms = _fuzzy_keyword_hit(text_lower, ("form 1040", "u.s. individual income tax return"), threshold=0.75)
     has_1040_terms = _keyword_hit(
         text_lower, ("adjusted gross income", "filing status", "wages, salaries", "wages/salaries"), min_hits=1,
     )
-    return has_identity_terms or has_1040_terms
+    return has_identity_terms and has_1040_terms
 
 
 def validate_purchase_agreement(extracted_text: str) -> bool:
@@ -444,6 +451,22 @@ def validate_fee_structure_document(extracted_text: str) -> bool:
     return has_fee_terms or (has_breakdown_terms and "fee" in text_lower)
 
 
+def validate_annual_income_certificate(extracted_text: str) -> bool:
+    """Heuristic: an employer-issued annual income certification names itself as such,
+    identifies the employer and employee, and states a certified annual income total —
+    distinct from a single pay stub/salary slip, which reports one pay period rather
+    than a certified yearly figure."""
+    text_lower = (extracted_text or "").lower()
+    has_identity_terms = _keyword_hit(text_lower, (
+        "certified statement of", "income certification", "certificate of income",
+        "certified annual income", "income for employee certification",
+    ), min_hits=1)
+    has_structure_terms = _keyword_hit(text_lower, (
+        "annual income", "employer", "employee", "designation", "certified that",
+    ), min_hits=2)
+    return has_identity_terms or has_structure_terms
+
+
 # Maps the exact document labels used in json/require.json and bank required_documents
 # lists to a (needs_image_bytes, validator) pair. Text-based validators receive OCR/PDF
 # extracted text; validate_selfie receives raw image bytes directly (no OCR possible).
@@ -471,4 +494,5 @@ DOCUMENT_VALIDATORS = {
     "6 months bank statement": ("text", validate_bank_statement),
     "admission letter": ("text", validate_admission_letter),
     "fee structure document": ("text", validate_fee_structure_document),
+    "annual income": ("text", validate_annual_income_certificate),
 }

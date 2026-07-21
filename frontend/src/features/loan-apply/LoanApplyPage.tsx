@@ -420,13 +420,16 @@ export function LoanApplyPage() {
             </Field>
 
             <Field label="Loan Amount" error={errors.loan_amount?.message}>
-              <Input
-                className={FIELD_SIZE}
-                type="number"
-                min={0}
-                placeholder="e.g. 500000"
-                {...form.register("loan_amount")}
-              />
+              <div className="relative">
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                <Input
+                  className={`${FIELD_SIZE} pl-8`}
+                  type="number"
+                  min={0}
+                  placeholder="e.g. 500000"
+                  {...form.register("loan_amount")}
+                />
+              </div>
             </Field>
 
             <Field label="ZIP Code" error={errors.zip_code?.message}>

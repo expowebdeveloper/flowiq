@@ -49,8 +49,6 @@ export const HOME_LOAN_FIELD_LABELS: Record<string, string> = {
   monthly_income: "Monthly Income",
   monthly_debt_payments: "Monthly Debt Payments",
   existing_loan_emi_amount: "Existing Loan/EMI Amount",
-  checking_account_balance: "Checking Account Balance",
-  savings_account_balance: "Savings Account Balance",
   property_address: "Property Address",
   property_type: "Property Type",
   property_value: "Property Value",
@@ -72,8 +70,6 @@ export const homeLoanDetailsSchema = z.object({
 
   monthly_debt_payments: requiredMoney("Monthly debt payments"),
   existing_loan_emi_amount: requiredMoney("Existing loan/EMI amount"),
-  checking_account_balance: requiredMoney("Checking account balance"),
-  savings_account_balance: requiredMoney("Savings account balance"),
 
   property_address: z.string().min(1, "Property address is required"),
   property_type: z.enum(PROPERTY_TYPES, { message: "Select a property type" }),
@@ -121,18 +117,6 @@ export function HomeLoanDetailsStep({ form }: { form: UseFormReturn<any> }) {
             name="existing_loan_emi_amount"
             label="Existing Loan/EMI Amount"
             placeholder="10000"
-          />
-          <MoneyField
-            form={form}
-            name="checking_account_balance"
-            label="Checking Account Balance"
-            placeholder="250000"
-          />
-          <MoneyField
-            form={form}
-            name="savings_account_balance"
-            label="Savings Account Balance"
-            placeholder="500000"
           />
         </div>
       </div>
