@@ -50,10 +50,22 @@ function buildRequirementFormData(payload: LoanRequirementPayload): FormData {
   return formData
 }
 
+export interface BankLoginCredentials {
+  email: string
+  password: string
+}
+
 export interface BankCreateResponse {
   success: boolean
   message: string
   bank_id: number | null
+  login: BankLoginCredentials | null
+}
+
+export interface BankUpdateResponse {
+  success: boolean
+  message: string
+  login: BankLoginCredentials | null
 }
 
 export const banksService = {
@@ -115,7 +127,7 @@ export const banksService = {
     runApiCall<BankCreateResponse>({ method: "POST", url: "/banks/add", data: payload }),
 
   updateBank: (bankId: number, payload: BankPayload) =>
-    runApiCall({ method: "POST", url: `/banks/${bankId}/edit`, data: payload }),
+    runApiCall<BankUpdateResponse>({ method: "POST", url: `/banks/${bankId}/edit`, data: payload }),
 
   deleteBank: (bankId: number) =>
     runApiCall({ method: "POST", url: `/banks/${bankId}/delete` }),

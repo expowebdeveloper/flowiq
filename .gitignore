@@ -5,10 +5,7 @@ env/
 ENV/
 
 # Environment variables
-.env
 .env.example
-.env.local
-.env.production
 .env.*.local
 
 # Python cache / build artifacts
@@ -41,7 +38,6 @@ celerybeat.pid
 Thumbs.db
 
 # IDE
-.vscode/
 .idea/
 *.swp
 *.swo
@@ -62,3 +58,6 @@ temp_interactive_push.bat
 # Frontend and non required the file
 frontend_deploy.sh
 deploy.sh
+.gitignore
+config.bat
+node_modules
