@@ -192,6 +192,11 @@ export function LeadsPage() {
     ? (dateFilterParam as "today" | "month" | "year")
     : "all"
 
+  const docsFilterParam = searchParams.get("docsFilter")
+  const activeDocsFilter = ["complete", "incomplete", "awaiting"].includes(docsFilterParam || "")
+    ? (docsFilterParam as "complete" | "incomplete" | "awaiting")
+    : "all"
+
   const handleDateFilterChange = (filter: "all" | "today" | "month" | "year") => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
@@ -199,6 +204,18 @@ export function LeadsPage() {
         next.delete("dateFilter")
       } else {
         next.set("dateFilter", filter)
+      }
+      return next
+    })
+  }
+
+  const handleDocsFilterChange = (filter: "all" | "complete" | "incomplete" | "awaiting") => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (filter === "all") {
+        next.delete("docsFilter")
+      } else {
+        next.set("docsFilter", filter)
       }
       return next
     })
@@ -250,8 +267,23 @@ export function LeadsPage() {
       })
     }
 
+    if (activeDocsFilter && activeDocsFilter !== "all") {
+      result = result.filter((lead) => {
+        if (activeDocsFilter === "complete") {
+          return lead.documents_status === "documents_complete"
+        }
+        if (activeDocsFilter === "incomplete") {
+          return lead.documents_status === "documents_incomplete"
+        }
+        if (activeDocsFilter === "awaiting") {
+          return lead.documents_status === "awaiting_documents"
+        }
+        return true
+      })
+    }
+
     return result
-  }, [leads, activeStage, activeDateFilter])
+  }, [leads, activeStage, activeDateFilter, activeDocsFilter])
 
   const selectedLead = leads?.find((l) => l.id === selectedId) ?? null
 
@@ -272,33 +304,67 @@ export function LeadsPage() {
       <PageHeader title="Leads" description="Applicants who submitted the loan application form." />
 
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border bg-card p-4">
-        <div className="flex items-center gap-2">
-          <Calendar className="size-4 text-muted-foreground" />
-          <span className="text-sm font-medium">Filter by Date:</span>
-          <div className="flex bg-muted p-1 rounded-lg">
-            {(["all", "today", "month", "year"] as const).map((filter) => {
-              const label = {
-                all: "All Time",
-                today: "Today",
-                month: "This Month",
-                year: "This Year",
-              }[filter]
-              const active = activeDateFilter === filter
-              return (
-                <button
-                  key={filter}
-                  onClick={() => handleDateFilterChange(filter)}
-                  className={cn(
-                    "px-3 py-1 text-xs font-medium rounded-md transition-all cursor-pointer",
-                    active
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground hover:bg-background/20"
-                  )}
-                >
-                  {label}
-                </button>
-              )
-            })}
+        <div className="flex flex-wrap items-center gap-6">
+          <div className="flex items-center gap-2">
+            <Calendar className="size-4 text-muted-foreground" />
+            <span className="text-sm font-medium">Filter by Date:</span>
+            <div className="flex bg-muted p-1 rounded-lg">
+              {(["all", "today", "month", "year"] as const).map((filter) => {
+                const label = {
+                  all: "All Time",
+                  today: "Today",
+                  month: "This Month",
+                  year: "This Year",
+                }[filter]
+                const active = activeDateFilter === filter
+                return (
+                  <button
+                    key={filter}
+                    type="button"
+                    onClick={() => handleDateFilterChange(filter)}
+                    className={cn(
+                      "px-3 py-1 text-xs font-medium rounded-md transition-all cursor-pointer",
+                      active
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground hover:bg-background/20"
+                    )}
+                  >
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <FileText className="size-4 text-muted-foreground" />
+            <span className="text-sm font-medium">Documents:</span>
+            <div className="flex bg-muted p-1 rounded-lg">
+              {(["all", "complete", "incomplete", "awaiting"] as const).map((filter) => {
+                const label = {
+                  all: "All",
+                  complete: "Complete",
+                  incomplete: "Incomplete",
+                  awaiting: "Awaiting",
+                }[filter]
+                const active = activeDocsFilter === filter
+                return (
+                  <button
+                    key={filter}
+                    type="button"
+                    onClick={() => handleDocsFilterChange(filter)}
+                    className={cn(
+                      "px-3 py-1 text-xs font-medium rounded-md transition-all cursor-pointer",
+                      active
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground hover:bg-background/20"
+                    )}
+                  >
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
           </div>
         </div>
 
