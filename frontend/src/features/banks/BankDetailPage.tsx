@@ -31,6 +31,15 @@ type ScopedRequirement = LoanRequirement & { scope: "Global" | "Bank" }
 
 const PREVIEW_LIMIT = 3
 
+function normalizeRequirements(commands: LoanRequirement[] | undefined): LoanRequirement[] {
+  return Array.isArray(commands)
+    ? commands.map((requirement) => ({
+        ...requirement,
+        loan_types: Array.isArray(requirement.loan_types) ? requirement.loan_types : [],
+      }))
+    : []
+}
+
 function toBankPayload(bank: Bank): BankPayload {
   return {
     name: bank.name,
@@ -97,7 +106,9 @@ export function BankDetailPage() {
     const result = await banksService.listBankPolicies(bankId)
     setIsLoadingPolicies(false)
     if (result.ok && result.data) {
-      setPolicies(result.data.policies)
+      setPolicies(Array.isArray(result.data.policies) ? result.data.policies : [])
+    } else {
+      setPolicies([])
     }
   }, [bankId])
 
@@ -107,8 +118,9 @@ export function BankDetailPage() {
     banksService.listBankRequirements(bankId).then((result) => {
       setIsLoadingRequirements(false)
       if (result.ok && result.data) {
-        setRequirements(result.data.commands)
+        setRequirements(normalizeRequirements(result.data.commands))
       } else {
+        setRequirements([])
         setRequirementsError(result.errorMessage ?? "Failed to load requirements")
       }
     })
@@ -117,7 +129,9 @@ export function BankDetailPage() {
   const fetchGlobalRequirements = useCallback(() => {
     banksService.listGlobalRequirements().then((result) => {
       if (result.ok && result.data) {
-        setGlobalRequirements(result.data.commands)
+        setGlobalRequirements(normalizeRequirements(result.data.commands))
+      } else {
+        setGlobalRequirements([])
       }
     })
   }, [])
@@ -314,7 +328,10 @@ export function BankDetailPage() {
               const meta = LOAN_TYPE_META[loanType]
               const existing = policies.find((p) => p.loan_type === loanType)
               const isSupported = Boolean(existing)
-              const matchesType = (r: LoanRequirement) => r.loan_types.length === 0 || r.loan_types.includes(loanType)
+              const matchesType = (r: LoanRequirement) => {
+                const loanTypes = Array.isArray(r.loan_types) ? r.loan_types : []
+                return loanTypes.length === 0 || loanTypes.includes(loanType)
+              }
               const matchingRequirements: ScopedRequirement[] = [
                 ...globalRequirements.filter(matchesType).map((r) => ({ ...r, scope: "Global" as const })),
                 ...(requirements ?? []).filter(matchesType).map((r) => ({ ...r, scope: "Bank" as const })),

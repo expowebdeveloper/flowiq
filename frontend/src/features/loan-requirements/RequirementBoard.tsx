@@ -60,6 +60,10 @@ const emptyForm = {
   existingAttachmentFilename: null as string | null,
 }
 
+function getLoanTypes(requirement: LoanRequirement): string[] {
+  return Array.isArray(requirement.loan_types) ? requirement.loan_types : []
+}
+
 export function RequirementBoard({
   requirements,
   isLoading,
@@ -91,12 +95,13 @@ export function RequirementBoard({
   }
 
   function openEdit(requirement: LoanRequirement) {
+    const loanTypes = getLoanTypes(requirement)
     setEditingId(requirement.id)
     setForm({
       scenario: requirement.scenario,
       instruction: requirement.instruction,
-      applyToAll: requirement.loan_types.length === 0,
-      selectedTypes: requirement.loan_types,
+      applyToAll: loanTypes.length === 0,
+      selectedTypes: loanTypes,
       attachmentFile: null,
       removeAttachment: false,
       existingAttachmentFilename: requirement.attachment_filename,
@@ -165,9 +170,10 @@ export function RequirementBoard({
   }
 
   function itemsForGroup(groupKey: string) {
-    return (requirements ?? []).filter((r) =>
-      groupKey === ALL_LOAN_TYPES_KEY ? r.loan_types.length === 0 : r.loan_types.includes(groupKey),
-    )
+    return (requirements ?? []).filter((r) => {
+      const loanTypes = getLoanTypes(r)
+      return groupKey === ALL_LOAN_TYPES_KEY ? loanTypes.length === 0 : loanTypes.includes(groupKey)
+    })
   }
 
   if (isLoading) {
