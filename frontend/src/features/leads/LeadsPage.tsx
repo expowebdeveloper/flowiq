@@ -187,6 +187,23 @@ export function LeadsPage() {
   const stageParam = searchParams.get("stage")
   const activeStage = isLeadStageKey(stageParam) ? stageParam : null
 
+  const dateFilterParam = searchParams.get("dateFilter")
+  const activeDateFilter = ["today", "month", "year"].includes(dateFilterParam || "")
+    ? (dateFilterParam as "today" | "month" | "year")
+    : "all"
+
+  const handleDateFilterChange = (filter: "all" | "today" | "month" | "year") => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (filter === "all") {
+        next.delete("dateFilter")
+      } else {
+        next.set("dateFilter", filter)
+      }
+      return next
+    })
+  }
+
   useEffect(() => {
     loanApplyService.list().then((res) => {
       if (res.ok && res.data) {
@@ -202,9 +219,39 @@ export function LeadsPage() {
 
   const filteredLeads = useMemo(() => {
     if (!leads) return leads
-    if (!activeStage) return leads
-    return leads.filter((lead) => stageOf(lead) === activeStage)
-  }, [leads, activeStage])
+    let result = leads
+
+    if (activeStage) {
+      result = result.filter((lead) => stageOf(lead) === activeStage)
+    }
+
+    if (activeDateFilter && activeDateFilter !== "all") {
+      const now = new Date()
+      result = result.filter((lead) => {
+        if (!lead.created_at) return false
+        const leadDate = new Date(lead.created_at)
+        if (activeDateFilter === "today") {
+          return (
+            leadDate.getFullYear() === now.getFullYear() &&
+            leadDate.getMonth() === now.getMonth() &&
+            leadDate.getDate() === now.getDate()
+          )
+        }
+        if (activeDateFilter === "month") {
+          return (
+            leadDate.getFullYear() === now.getFullYear() &&
+            leadDate.getMonth() === now.getMonth()
+          )
+        }
+        if (activeDateFilter === "year") {
+          return leadDate.getFullYear() === now.getFullYear()
+        }
+        return true
+      })
+    }
+
+    return result
+  }, [leads, activeStage, activeDateFilter])
 
   const selectedLead = leads?.find((l) => l.id === selectedId) ?? null
 
@@ -223,6 +270,42 @@ export function LeadsPage() {
   return (
     <div>
       <PageHeader title="Leads" description="Applicants who submitted the loan application form." />
+
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border bg-card p-4">
+        <div className="flex items-center gap-2">
+          <Calendar className="size-4 text-muted-foreground" />
+          <span className="text-sm font-medium">Filter by Date:</span>
+          <div className="flex bg-muted p-1 rounded-lg">
+            {(["all", "today", "month", "year"] as const).map((filter) => {
+              const label = {
+                all: "All Time",
+                today: "Today",
+                month: "This Month",
+                year: "This Year",
+              }[filter]
+              const active = activeDateFilter === filter
+              return (
+                <button
+                  key={filter}
+                  onClick={() => handleDateFilterChange(filter)}
+                  className={cn(
+                    "px-3 py-1 text-xs font-medium rounded-md transition-all cursor-pointer",
+                    active
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground hover:bg-background/20"
+                  )}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="text-xs text-muted-foreground">
+          Showing {filteredLeads?.length ?? 0} {filteredLeads?.length === 1 ? "lead" : "leads"}
+        </div>
+      </div>
 
       {activeStageDef && (
         <div className="mb-4 flex items-center gap-2">
