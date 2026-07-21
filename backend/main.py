@@ -80,7 +80,7 @@ from loan_recommendation.agent_commands.routes import (
 load_dotenv()
 
 # ── Database Init ──────────────────────────────────────────────────────────────
-Base.metadata.create_all(bind=engine)
+# Base.metadata.create_all(bind=engine)
 
 # ── App ────────────────────────────────────────────────────────────────────────
 # root_path tells FastAPI it's served externally under this prefix (e.g.
