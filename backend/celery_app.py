@@ -236,52 +236,21 @@ MAX_MISSING_ID_TASK_RETRIES = 2
 @celery.task(bind=True, name="notify_missing_application_id", max_retries=MAX_MISSING_ID_TASK_RETRIES)
 def notify_missing_application_id(self, mailbox_email: str, sender_email: str, message_id: str, subject: str, thread_id: str | None):
     """
-    Sent when a known applicant's inbound message has no [application id: ...] tag
-    anywhere in it — see loan_apply.agent.extract_application_id and
-    poll_loan_applicant_replies below, which is the only caller. Asks them to
-    resend with the application ID included (or reply in the original thread)
-    rather than silently dropping their message the way the poller did before
-    this existed.
+    Disabled: this used to send the "unable to locate your application ID"
+    reply. Missing-ID applicant messages are now marked processed without an
+    outbound email in poll_loan_applicant_replies. Keep this task as a no-send
+    guard for any already queued Celery jobs.
     """
     from agent_activity import emit
-    from db import UserFormSubmission, get_session, mark_applicant_reply_processed, release_dispatch_claim
-    from loan_apply.agent import send_missing_application_id_email
+    from db import mark_applicant_reply_processed, release_dispatch_claim
 
-    session = get_session()
-    try:
-        submission = (
-            session.query(UserFormSubmission)
-            .filter(UserFormSubmission.email == sender_email)
-            .order_by(UserFormSubmission.created_at.desc())
-            .first()
-        )
-        applicant_name = f"{submission.first_name} {submission.last_name}".strip() if submission else sender_email
-    finally:
-        session.close()
-
-    reply_subject = subject if subject.lower().startswith("re:") else f"Re: {subject}"
-
-    try:
-        send_missing_application_id_email(
-            applicant_name, sender_email, subject=reply_subject,
-            thread_id=thread_id, in_reply_to_message_id=message_id if thread_id else None,
-        )
-        emit(
-            "email_agent", "info",
-            f"Asked {applicant_name} to resend with their application ID — none found in their message",
-        )
-        mark_applicant_reply_processed(message_id, sender_email)
-        release_dispatch_claim(message_id)
-        return {"status": "sent"}
-    except Exception as exc:
-        if self.request.retries >= self.max_retries:
-            release_dispatch_claim(message_id)
-            raise
-        try:
-            self.retry(exc=exc, countdown=10)
-        except self.MaxRetriesExceededError:
-            release_dispatch_claim(message_id)
-            raise
+    mark_applicant_reply_processed(message_id, sender_email)
+    release_dispatch_claim(message_id)
+    emit(
+        "email_agent", "info",
+        "Skipped missing-application-id auto-reply; message marked processed",
+    )
+    return {"status": "skipped", "reason": "missing_application_id_auto_reply_disabled"}
 
 
 @celery.task(name="poll_loan_applicant_replies")
@@ -305,9 +274,8 @@ def poll_loan_applicant_replies():
         no attachment has nothing to process, so it's just marked handled
         without a task).
       - No code found, or a code found but it doesn't match any submission
-        (typo/stale/forged): dispatch notify_missing_application_id so the
-        applicant is told to resend with their (correct) application ID,
-        instead of the message being silently ignored or matched wrong.
+        (typo/stale/forged): mark the message processed without sending an
+        auto-reply. This avoids the missing-application-id email loop.
     """
     from agent_activity import emit
     from auth.oauth import build_gmail_service
@@ -368,6 +336,7 @@ def poll_loan_applicant_replies():
                     (addr for addr in applicant_emails if addr.lower() in sender_header.lower()), None
                 )
                 if not sender_email:
+                    release_dispatch_claim(m["id"])
                     continue
 
                 has_attachment = any(
@@ -396,13 +365,15 @@ def poll_loan_applicant_replies():
                     mark_applicant_reply_processed(m["id"], sender_email)
                     release_dispatch_claim(m["id"])
                 else:
-                    missing_id.append((m["id"], sender_email, subject_header, meta.get("threadId")))
+                    # Do not send the missing-application-id auto-reply. Mark
+                    # the message handled so the 60s poll does not repeatedly
+                    # queue replies for the same inbox item.
+                    mark_applicant_reply_processed(m["id"], sender_email)
+                    release_dispatch_claim(m["id"])
+                    missing_id.append((m["id"], sender_email))
 
             for message_id, sender_email, submission_id in with_id:
                 process_loan_applicant_documents.delay(mailbox_email, sender_email, message_id, submission_id)
-
-            for message_id, sender_email, subject_header, thread_id in missing_id:
-                notify_missing_application_id.delay(mailbox_email, sender_email, message_id, subject_header, thread_id)
 
             if not with_id and not missing_id:
                 results.append({"mailbox": mailbox_email, "status": "no new applicant messages"})
@@ -417,13 +388,13 @@ def poll_loan_applicant_replies():
             if missing_id:
                 emit(
                     "mailbox_poll", "info",
-                    f"Found {len(missing_id)} applicant message(s) in {mailbox_email} with no application ID",
+                    f"Skipped {len(missing_id)} applicant message(s) in {mailbox_email} with no application ID",
                     detail={"mailbox": mailbox_email, "count": len(missing_id)},
                 )
             results.append({
                 "mailbox": mailbox_email,
-                "status": "dispatched",
-                "message_ids": [mid for mid, _, _ in with_id] + [mid for mid, _, _, _ in missing_id],
+                "status": "dispatched" if with_id else "processed",
+                "message_ids": [mid for mid, _, _ in with_id] + [mid for mid, _ in missing_id],
             })
 
         except Exception as e:

@@ -789,31 +789,16 @@ def send_missing_application_id_email(
     in_reply_to_message_id: str | None = None,
 ) -> dict:
     """
-    Sent when a known applicant emails in (new message or reply) but no
-    [application id: ...] tag (see application_id_tag) can be found anywhere
-    in it — see celery_app.poll_loan_applicant_replies. Replies in the same
-    thread when one is available; otherwise sent as a fresh message, since a
-    new email with no recognizable application ID has no thread to reply into.
+    Disabled: this helper used to send the missing-application-id auto-reply.
+    The poller now marks those messages processed without outbound email.
     """
-    body = build_missing_application_id_email_body(applicant_name)
-    sender_email = _get_sender_email()
     logger.info(
-        "loan_apply agent: sending missing-application-id reply from %s to %s", sender_email, applicant_email
+        "loan_apply agent: skipped disabled missing-application-id reply to %s", applicant_email
     )
-
-    sent = _send_email(
-        sender_email, applicant_email,
-        subject=subject,
-        body=body,
-        thread_id=thread_id,
-        in_reply_to_message_id=in_reply_to_message_id,
-    )
-
     return {
-        "message_id": sent["message_id"],
-        "sender_email": sender_email,
+        "status": "skipped",
+        "reason": "missing_application_id_auto_reply_disabled",
         "recipient_email": applicant_email,
-        "body": body,
     }
 
 
