@@ -234,6 +234,12 @@ export interface Bank {
   website: string | null
   logo: string | null
   status: string
+  contact_email: string | null
+  // Portal login for a future agent-automation pass — not wired up to
+  // anything yet, storage only.
+  portal_url: string | null
+  portal_username: string | null
+  portal_password: string | null
   updated_at?: string
 }
 
@@ -246,25 +252,28 @@ export interface LoanPolicy {
   id: number
   bank_id: number
   loan_type: string
-  min_cibil: number
-  max_cibil: number
-  min_income: number
-  max_loan_amount: number
-  interest_rate: number
-  processing_fee: number
-  max_ltv: number
-  min_age: number
-  max_age: number
-  minimum_work_experience_years: number
-  maximum_foir: number
-  employment_types: string
-  property_types: string
-  required_documents: string
-  special_features: string
-  prepayment_charges: string
-  foreclosure_charges: string
-  min_tenure: number
-  max_tenure: number
+  // Every field below is null until an admin fills in the full policy
+  // details — toggling a loan type "on" for a bank creates a bare row with
+  // just loan_type set.
+  min_cibil: number | null
+  max_cibil: number | null
+  min_income: number | null
+  max_loan_amount: number | null
+  interest_rate: number | null
+  processing_fee: number | null
+  max_ltv: number | null
+  min_age: number | null
+  max_age: number | null
+  minimum_work_experience_years: number | null
+  maximum_foir: number | null
+  employment_types: string | null
+  property_types: string | null
+  required_documents: string | null
+  special_features: string | null
+  prepayment_charges: string | null
+  foreclosure_charges: string | null
+  min_tenure: number | null
+  max_tenure: number | null
   last_updated?: string
 }
 
@@ -272,6 +281,29 @@ export interface LoanPolicyListResponse {
   success: boolean
   bank_id: number
   policies: LoanPolicy[]
+}
+
+// ─── Loan Requirements (agent instruction library) ──────────────────────────
+// Backend model/table is named AgentCommand/agent_commands — an internal
+// implementation detail; the frontend-facing name matches the "Loan
+// Requirements" page and domain language.
+
+export interface LoanRequirement {
+  id: number
+  scenario: string
+  instruction: string
+  loan_types: string[] // empty = applies to every loan type; otherwise one or more specific types
+  bank_id: number | null // null = global requirement, not bank-specific
+  attachment_filename: string | null // original filename, for display
+  attachment_url: string | null // download URL, present only if an attachment exists
+  created_at?: string
+  updated_at?: string
+}
+
+export interface LoanRequirementListResponse {
+  success: boolean
+  bank_id?: number
+  commands: LoanRequirement[]
 }
 
 // ─── Chat ────────────────────────────────────────────────────────────────────

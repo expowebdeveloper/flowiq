@@ -72,6 +72,10 @@ from loan_recommendation.bank_sync.routes import router as bank_sync_router
 from loan_recommendation.bank_sync.scheduler import start_scheduler
 from loan_recommendation.bank_management.routes import router as bank_management_router
 from loan_recommendation.bank_management.loan_policy.routes import router as loan_policy_router
+from loan_recommendation.agent_commands.routes import (
+    global_router as agent_commands_global_router,
+    bank_router as agent_commands_bank_router,
+)
 
 load_dotenv()
 
@@ -129,6 +133,8 @@ app.include_router(recommendation_router)
 app.include_router(bank_sync_router)
 app.include_router(bank_management_router)
 app.include_router(loan_policy_router)
+app.include_router(agent_commands_global_router)
+app.include_router(agent_commands_bank_router)
 
 
 @app.get("/", tags=["utility"])

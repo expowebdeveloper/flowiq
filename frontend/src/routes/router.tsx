@@ -4,14 +4,16 @@ import { LoginPage } from "@/pages/LoginPage"
 import { RoleHome } from "@/pages/RoleHome"
 import { MailPage } from "@/features/mail/MailPage"
 import { ChatPage } from "@/features/chat/ChatPage"
-import { LoansPage } from "@/features/loans/LoansPage"
 import { BanksPage } from "@/features/banks/BanksPage"
+import { BankCreatePage } from "@/features/banks/BankCreatePage"
+import { BankDetailPage } from "@/features/banks/BankDetailPage"
 import { SettingsPage } from "@/features/settings/SettingsPage"
 import { KycFormPage } from "@/features/kyc/KycFormPage"
 import { JsonVerifyPage } from "@/features/json-verify/JsonVerifyPage"
 import { LoanApplyPage } from "@/features/loan-apply/LoanApplyPage"
 import { LeadsPage } from "@/features/leads/LeadsPage"
 import { BankNotificationsPage } from "@/features/bank-notifications/BankNotificationsPage"
+import { LoanRequirementsPage } from "@/features/loan-requirements/LoanRequirementsPage"
 import { AiActivityPage } from "@/features/ai-activity/AiActivityPage"
 import { ProtectedRoute } from "./ProtectedRoute"
 
@@ -29,8 +31,10 @@ export const router = createBrowserRouter([
           { path: "/notifications", element: <BankNotificationsPage /> },
           { path: "/mail", element: <MailPage /> },
           { path: "/chat", element: <ChatPage /> },
-          { path: "/loans", element: <LoansPage /> },
           { path: "/banks", element: <BanksPage /> },
+          { path: "/banks/new", element: <BankCreatePage /> },
+          { path: "/banks/:bankId", element: <BankDetailPage /> },
+          { path: "/loan-requirements", element: <LoanRequirementsPage /> },
           { path: "/verify-json", element: <JsonVerifyPage /> },
           { path: "/leads", element: <LeadsPage /> },
           { path: "/ai-activity", element: <AiActivityPage /> },

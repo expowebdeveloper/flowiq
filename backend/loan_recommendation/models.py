@@ -47,6 +47,19 @@ class Bank(Base):
 
     status = Column(String, default="active")
 
+    contact_email = Column(String, unique=True, nullable=True, index=True)
+
+    # Portal login the agent will use to sign in on the bank's own website in
+    # a future automation pass — not wired up to anything yet, storage only.
+    # Kept in plaintext (not hashed) because, unlike a user login, the agent
+    # needs the actual credential value to type into the bank's real login
+    # form, not just a one-way check.
+    portal_url = Column(String, nullable=True)
+
+    portal_username = Column(String, nullable=True)
+
+    portal_password = Column(String, nullable=True)
+
     updated_at = Column(
         DateTime,
         default=datetime.utcnow,
@@ -55,6 +68,12 @@ class Bank(Base):
 
     loan_policies = relationship(
         "BankLoanPolicy",
+        back_populates="bank",
+        cascade="all, delete-orphan"
+    )
+
+    agent_commands = relationship(
+        "AgentCommand",
         back_populates="bank",
         cascade="all, delete-orphan"
     )
@@ -118,4 +137,49 @@ class BankLoanPolicy(Base):
     bank = relationship(
         "Bank",
         back_populates="loan_policies"
+    )
+
+
+class AgentCommand(Base):
+
+    __tablename__ = "agent_commands"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Short name shown in the requirements list, e.g. "Check Rural or Not".
+    scenario = Column(String, nullable=False)
+
+    # The actual instruction text handed to the loan-processing agent.
+    instruction = Column(Text, nullable=False)
+
+    # None = applies to every loan type; otherwise one of the canonical
+    # loan_type values used elsewhere (home_loan, education_loan, ...).
+    loan_type = Column(String, nullable=True)
+
+    # None = a global requirement; set = scoped to one specific bank.
+    bank_id = Column(
+        Integer,
+        ForeignKey("banks.id"),
+        nullable=True
+    )
+
+    # Optional reference file for this requirement (e.g. a sample document
+    # the agent should follow). attachment_filename is the randomized name
+    # actually stored on disk (backend/static/uploads/requirements/);
+    # attachment_original_name is the human-readable name to display/download as.
+    attachment_filename = Column(String, nullable=True)
+
+    attachment_original_name = Column(String, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    updated_at = Column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow
+    )
+
+    bank = relationship(
+        "Bank",
+        back_populates="agent_commands"
     )
