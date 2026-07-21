@@ -6,7 +6,6 @@ import { MailPage } from "@/features/mail/MailPage"
 import { ChatPage } from "@/features/chat/ChatPage"
 import { LoansPage } from "@/features/loans/LoansPage"
 import { BanksPage } from "@/features/banks/BanksPage"
-import { AttachmentsPage } from "@/features/attachments/AttachmentsPage"
 import { SettingsPage } from "@/features/settings/SettingsPage"
 import { KycFormPage } from "@/features/kyc/KycFormPage"
 import { JsonVerifyPage } from "@/features/json-verify/JsonVerifyPage"
@@ -32,7 +31,6 @@ export const router = createBrowserRouter([
           { path: "/chat", element: <ChatPage /> },
           { path: "/loans", element: <LoansPage /> },
           { path: "/banks", element: <BanksPage /> },
-          { path: "/attachments", element: <AttachmentsPage /> },
           { path: "/verify-json", element: <JsonVerifyPage /> },
           { path: "/leads", element: <LeadsPage /> },
           { path: "/ai-activity", element: <AiActivityPage /> },

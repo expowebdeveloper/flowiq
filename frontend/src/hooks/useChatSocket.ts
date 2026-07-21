@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from "react"
-import { API_BASE_URL } from "@/services/apiClient"
+import { buildWsUrl } from "@/services/apiClient"
 import type { ChatMessage } from "@/types/api"
 
 /**
@@ -15,9 +15,7 @@ export function useChatSocket(token: string | null, onMessage: (message: ChatMes
   useEffect(() => {
     if (!token) return
 
-    const wsUrl = new URL(API_BASE_URL)
-    wsUrl.protocol = wsUrl.protocol === "https:" ? "wss:" : "ws:"
-    wsUrl.pathname = "/chat/ws"
+    const wsUrl = buildWsUrl("/chat/ws")
     wsUrl.searchParams.set("token", token)
 
     const socket = new WebSocket(wsUrl.toString())

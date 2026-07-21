@@ -1,23 +1,64 @@
 # Virtual environment
 venv/
+.venv/
+env/
+ENV/
 
 # Environment variables
 .env
 .env.example
-# Python cache
+.env.local
+.env.production
+.env.*.local
+
+# Python cache / build artifacts
 __pycache__/
 *.pyc
+*.pyo
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
 # Tokens and credentials
 tokens/
 credentials_template.json
 
-# Attachments
+# Runtime-generated data (see backend/main.py, agents/aadhaar.py, celery_app.py)
 attachments/
+applications/
+/static/
+logs/
+*.log
+celerybeat-schedule
+celerybeat.pid
 
 # OS files
 .DS_Store
+Thumbs.db
 
 # IDE
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
+
+# AI coding assistants
+.claude/
+.cursor/
+.windsurf/
+.aider*
+.continue/
+
+# Misc
+branch_structure.json
+temp_auto_push.bat
+temp_interactive_push.bat
+
+# Frontend and non required the file
+frontend_deploy.sh
+deploy.sh

@@ -54,6 +54,20 @@ declare module "axios" {
   }
 }
 
+/**
+ * Builds a ws(s):// URL for a given API path, preserving whatever path
+ * prefix API_BASE_URL itself has (e.g. "/api" behind the nginx proxy) —
+ * `new URL(path, API_BASE_URL)` would only work if API_BASE_URL ended in
+ * a trailing slash, and plain string concatenation would drop the origin's
+ * protocol swap, so this does both explicitly.
+ */
+export function buildWsUrl(path: string): URL {
+  const wsUrl = new URL(API_BASE_URL, window.location.origin)
+  wsUrl.protocol = wsUrl.protocol === "https:" ? "wss:" : "ws:"
+  wsUrl.pathname = wsUrl.pathname.replace(/\/+$/, "") + path
+  return wsUrl
+}
+
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
   timeout: 60_000,

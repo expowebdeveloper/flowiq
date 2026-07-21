@@ -79,7 +79,12 @@ load_dotenv()
 Base.metadata.create_all(bind=engine)
 
 # ── App ────────────────────────────────────────────────────────────────────────
-app = FastAPI(title="Email AI & FlowIQ API", version="1.0.0")
+# root_path tells FastAPI it's served externally under this prefix (e.g.
+# "/api" behind the nginx proxy, which strips the prefix before forwarding)
+# so /docs, /openapi.json, and redirect responses generate correct URLs.
+# Routes below are still declared without the prefix — only link generation
+# changes. https://fastapi.tiangolo.com/advanced/behind-a-proxy/
+app = FastAPI(title="Email AI & FlowIQ API", version="1.0.0", root_path=os.getenv("ROOT_PATH", ""))
 
 app.add_middleware(
     CORSMiddleware,
