@@ -14,6 +14,7 @@ router = APIRouter(
 bank_service = BankManagementService()
 
 
+@router.get("")
 @router.get("/")
 def bank_list(
     db: Session = Depends(get_db)
