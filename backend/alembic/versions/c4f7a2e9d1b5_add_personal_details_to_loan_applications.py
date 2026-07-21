@@ -20,13 +20,27 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.add_column('loan_applications', sa.Column('date_of_birth', sa.String(), nullable=True))
-    op.add_column('loan_applications', sa.Column('gender', sa.String(), nullable=True))
-    op.add_column('loan_applications', sa.Column('address', sa.Text(), nullable=True))
+    inspector = sa.inspect(op.get_bind())
+    if 'loan_applications' not in inspector.get_table_names():
+        return
+    columns = {c['name'] for c in inspector.get_columns('loan_applications')}
+    if 'date_of_birth' not in columns:
+        op.add_column('loan_applications', sa.Column('date_of_birth', sa.String(), nullable=True))
+    if 'gender' not in columns:
+        op.add_column('loan_applications', sa.Column('gender', sa.String(), nullable=True))
+    if 'address' not in columns:
+        op.add_column('loan_applications', sa.Column('address', sa.Text(), nullable=True))
 
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.drop_column('loan_applications', 'address')
-    op.drop_column('loan_applications', 'gender')
-    op.drop_column('loan_applications', 'date_of_birth')
+    inspector = sa.inspect(op.get_bind())
+    if 'loan_applications' not in inspector.get_table_names():
+        return
+    columns = {c['name'] for c in inspector.get_columns('loan_applications')}
+    if 'address' in columns:
+        op.drop_column('loan_applications', 'address')
+    if 'gender' in columns:
+        op.drop_column('loan_applications', 'gender')
+    if 'date_of_birth' in columns:
+        op.drop_column('loan_applications', 'date_of_birth')

@@ -20,23 +20,37 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.create_table(
-        'agent_activity_events',
-        sa.Column('id', sa.String(), nullable=False),
-        sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
-        sa.Column('source', sa.String(), nullable=False),
-        sa.Column('status', sa.String(), nullable=False),
-        sa.Column('message', sa.Text(), nullable=False),
-        sa.Column('submission_id', sa.String(), nullable=True),
-        sa.Column('detail', sa.Text(), nullable=True),
-        sa.PrimaryKeyConstraint('id'),
-    )
-    op.create_index(op.f('ix_agent_activity_events_created_at'), 'agent_activity_events', ['created_at'])
-    op.create_index(op.f('ix_agent_activity_events_submission_id'), 'agent_activity_events', ['submission_id'])
+    inspector = sa.inspect(op.get_bind())
+    if 'agent_activity_events' not in inspector.get_table_names():
+        op.create_table(
+            'agent_activity_events',
+            sa.Column('id', sa.String(), nullable=False),
+            sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+            sa.Column('source', sa.String(), nullable=False),
+            sa.Column('status', sa.String(), nullable=False),
+            sa.Column('message', sa.Text(), nullable=False),
+            sa.Column('submission_id', sa.String(), nullable=True),
+            sa.Column('detail', sa.Text(), nullable=True),
+            sa.PrimaryKeyConstraint('id'),
+        )
+        inspector = sa.inspect(op.get_bind())
+    indexes = {i['name'] for i in inspector.get_indexes('agent_activity_events')}
+    created_index = op.f('ix_agent_activity_events_created_at')
+    submission_index = op.f('ix_agent_activity_events_submission_id')
+    if created_index not in indexes:
+        op.create_index(created_index, 'agent_activity_events', ['created_at'])
+    if submission_index not in indexes:
+        op.create_index(submission_index, 'agent_activity_events', ['submission_id'])
 
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.drop_index(op.f('ix_agent_activity_events_submission_id'), table_name='agent_activity_events')
-    op.drop_index(op.f('ix_agent_activity_events_created_at'), table_name='agent_activity_events')
+    inspector = sa.inspect(op.get_bind())
+    if 'agent_activity_events' not in inspector.get_table_names():
+        return
+    indexes = {i['name'] for i in inspector.get_indexes('agent_activity_events')}
+    if op.f('ix_agent_activity_events_submission_id') in indexes:
+        op.drop_index(op.f('ix_agent_activity_events_submission_id'), table_name='agent_activity_events')
+    if op.f('ix_agent_activity_events_created_at') in indexes:
+        op.drop_index(op.f('ix_agent_activity_events_created_at'), table_name='agent_activity_events')
     op.drop_table('agent_activity_events')

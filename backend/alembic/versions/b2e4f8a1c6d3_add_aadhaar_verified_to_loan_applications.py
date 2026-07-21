@@ -20,13 +20,23 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.add_column(
-        'loan_applications',
-        sa.Column('aadhaar_verified', sa.Boolean(), nullable=False, server_default=sa.false()),
-    )
-    op.alter_column('loan_applications', 'aadhaar_verified', server_default=None)
+    inspector = sa.inspect(op.get_bind())
+    if 'loan_applications' not in inspector.get_table_names():
+        return
+    columns = {c['name'] for c in inspector.get_columns('loan_applications')}
+    if 'aadhaar_verified' not in columns:
+        op.add_column(
+            'loan_applications',
+            sa.Column('aadhaar_verified', sa.Boolean(), nullable=False, server_default=sa.false()),
+        )
+        op.alter_column('loan_applications', 'aadhaar_verified', server_default=None)
 
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.drop_column('loan_applications', 'aadhaar_verified')
+    inspector = sa.inspect(op.get_bind())
+    if 'loan_applications' not in inspector.get_table_names():
+        return
+    columns = {c['name'] for c in inspector.get_columns('loan_applications')}
+    if 'aadhaar_verified' in columns:
+        op.drop_column('loan_applications', 'aadhaar_verified')

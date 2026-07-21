@@ -20,11 +20,23 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.drop_column('user_form_submissions', 'pan_number')
-    op.drop_column('user_form_submissions', 'aadhaar_number')
+    inspector = sa.inspect(op.get_bind())
+    if 'user_form_submissions' not in inspector.get_table_names():
+        return
+    columns = {c['name'] for c in inspector.get_columns('user_form_submissions')}
+    if 'pan_number' in columns:
+        op.drop_column('user_form_submissions', 'pan_number')
+    if 'aadhaar_number' in columns:
+        op.drop_column('user_form_submissions', 'aadhaar_number')
 
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.add_column('user_form_submissions', sa.Column('aadhaar_number', sa.String(), nullable=True))
-    op.add_column('user_form_submissions', sa.Column('pan_number', sa.String(), nullable=True))
+    inspector = sa.inspect(op.get_bind())
+    if 'user_form_submissions' not in inspector.get_table_names():
+        return
+    columns = {c['name'] for c in inspector.get_columns('user_form_submissions')}
+    if 'aadhaar_number' not in columns:
+        op.add_column('user_form_submissions', sa.Column('aadhaar_number', sa.String(), nullable=True))
+    if 'pan_number' not in columns:
+        op.add_column('user_form_submissions', sa.Column('pan_number', sa.String(), nullable=True))

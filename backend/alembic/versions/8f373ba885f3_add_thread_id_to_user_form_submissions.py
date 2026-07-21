@@ -20,11 +20,23 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.add_column('user_form_submissions', sa.Column('thread_id', sa.String(), nullable=True))
-    op.add_column('user_form_submissions', sa.Column('mailbox_email', sa.String(), nullable=True))
+    inspector = sa.inspect(op.get_bind())
+    if 'user_form_submissions' not in inspector.get_table_names():
+        return
+    columns = {c['name'] for c in inspector.get_columns('user_form_submissions')}
+    if 'thread_id' not in columns:
+        op.add_column('user_form_submissions', sa.Column('thread_id', sa.String(), nullable=True))
+    if 'mailbox_email' not in columns:
+        op.add_column('user_form_submissions', sa.Column('mailbox_email', sa.String(), nullable=True))
 
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.drop_column('user_form_submissions', 'mailbox_email')
-    op.drop_column('user_form_submissions', 'thread_id')
+    inspector = sa.inspect(op.get_bind())
+    if 'user_form_submissions' not in inspector.get_table_names():
+        return
+    columns = {c['name'] for c in inspector.get_columns('user_form_submissions')}
+    if 'mailbox_email' in columns:
+        op.drop_column('user_form_submissions', 'mailbox_email')
+    if 'thread_id' in columns:
+        op.drop_column('user_form_submissions', 'thread_id')

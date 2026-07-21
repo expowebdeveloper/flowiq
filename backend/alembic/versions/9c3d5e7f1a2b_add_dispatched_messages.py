@@ -20,15 +20,19 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.create_table(
-        'dispatched_messages',
-        sa.Column('message_id', sa.String(), nullable=False),
-        sa.Column('email', sa.String(), nullable=False),
-        sa.Column('dispatched_at', sa.DateTime(timezone=True), nullable=False),
-        sa.PrimaryKeyConstraint('message_id'),
-    )
+    inspector = sa.inspect(op.get_bind())
+    if 'dispatched_messages' not in inspector.get_table_names():
+        op.create_table(
+            'dispatched_messages',
+            sa.Column('message_id', sa.String(), nullable=False),
+            sa.Column('email', sa.String(), nullable=False),
+            sa.Column('dispatched_at', sa.DateTime(timezone=True), nullable=False),
+            sa.PrimaryKeyConstraint('message_id'),
+        )
 
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.drop_table('dispatched_messages')
+    inspector = sa.inspect(op.get_bind())
+    if 'dispatched_messages' in inspector.get_table_names():
+        op.drop_table('dispatched_messages')

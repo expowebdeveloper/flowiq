@@ -32,16 +32,33 @@ def _generate_short_code() -> str:
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.add_column('user_form_submissions', sa.Column('short_code', sa.String(length=8), nullable=True))
-    op.create_index('ix_user_form_submissions_short_code', 'user_form_submissions', ['short_code'], unique=True)
+    inspector = sa.inspect(op.get_bind())
+    if 'user_form_submissions' not in inspector.get_table_names():
+        return
+    columns = {c['name'] for c in inspector.get_columns('user_form_submissions')}
+    indexes = {i['name'] for i in inspector.get_indexes('user_form_submissions')}
+    if 'short_code' not in columns:
+        op.add_column('user_form_submissions', sa.Column('short_code', sa.String(length=8), nullable=True))
+    if 'ix_user_form_submissions_short_code' not in indexes:
+        op.create_index('ix_user_form_submissions_short_code', 'user_form_submissions', ['short_code'], unique=True)
 
     # Backfill existing rows so every submission has a short_code in
     # practice, not just newly-created ones — generated one at a time with a
     # uniqueness check against what's already been assigned this run, since
     # the column has no data to collide against yet.
     connection = op.get_bind()
-    existing_ids = [row[0] for row in connection.execute(sa.text('SELECT id FROM user_form_submissions')).fetchall()]
-    used_codes = set()
+    existing_ids = [
+        row[0]
+        for row in connection.execute(
+            sa.text('SELECT id FROM user_form_submissions WHERE short_code IS NULL')
+        ).fetchall()
+    ]
+    used_codes = {
+        row[0]
+        for row in connection.execute(
+            sa.text('SELECT short_code FROM user_form_submissions WHERE short_code IS NOT NULL')
+        ).fetchall()
+    }
     for submission_id in existing_ids:
         code = _generate_short_code()
         while code in used_codes:
@@ -55,5 +72,12 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.drop_index('ix_user_form_submissions_short_code', table_name='user_form_submissions')
-    op.drop_column('user_form_submissions', 'short_code')
+    inspector = sa.inspect(op.get_bind())
+    if 'user_form_submissions' not in inspector.get_table_names():
+        return
+    columns = {c['name'] for c in inspector.get_columns('user_form_submissions')}
+    indexes = {i['name'] for i in inspector.get_indexes('user_form_submissions')}
+    if 'ix_user_form_submissions_short_code' in indexes:
+        op.drop_index('ix_user_form_submissions_short_code', table_name='user_form_submissions')
+    if 'short_code' in columns:
+        op.drop_column('user_form_submissions', 'short_code')

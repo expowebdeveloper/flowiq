@@ -20,9 +20,19 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.add_column('user_form_submissions', sa.Column('phone_number', sa.String(), nullable=True))
+    inspector = sa.inspect(op.get_bind())
+    if 'user_form_submissions' not in inspector.get_table_names():
+        return
+    columns = {c['name'] for c in inspector.get_columns('user_form_submissions')}
+    if 'phone_number' not in columns:
+        op.add_column('user_form_submissions', sa.Column('phone_number', sa.String(), nullable=True))
 
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.drop_column('user_form_submissions', 'phone_number')
+    inspector = sa.inspect(op.get_bind())
+    if 'user_form_submissions' not in inspector.get_table_names():
+        return
+    columns = {c['name'] for c in inspector.get_columns('user_form_submissions')}
+    if 'phone_number' in columns:
+        op.drop_column('user_form_submissions', 'phone_number')

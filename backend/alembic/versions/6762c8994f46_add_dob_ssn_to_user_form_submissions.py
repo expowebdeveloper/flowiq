@@ -20,11 +20,23 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.add_column('user_form_submissions', sa.Column('date_of_birth', sa.String(), nullable=True))
-    op.add_column('user_form_submissions', sa.Column('ssn', sa.String(), nullable=True))
+    inspector = sa.inspect(op.get_bind())
+    if 'user_form_submissions' not in inspector.get_table_names():
+        return
+    columns = {c['name'] for c in inspector.get_columns('user_form_submissions')}
+    if 'date_of_birth' not in columns:
+        op.add_column('user_form_submissions', sa.Column('date_of_birth', sa.String(), nullable=True))
+    if 'ssn' not in columns:
+        op.add_column('user_form_submissions', sa.Column('ssn', sa.String(), nullable=True))
 
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.drop_column('user_form_submissions', 'ssn')
-    op.drop_column('user_form_submissions', 'date_of_birth')
+    inspector = sa.inspect(op.get_bind())
+    if 'user_form_submissions' not in inspector.get_table_names():
+        return
+    columns = {c['name'] for c in inspector.get_columns('user_form_submissions')}
+    if 'ssn' in columns:
+        op.drop_column('user_form_submissions', 'ssn')
+    if 'date_of_birth' in columns:
+        op.drop_column('user_form_submissions', 'date_of_birth')

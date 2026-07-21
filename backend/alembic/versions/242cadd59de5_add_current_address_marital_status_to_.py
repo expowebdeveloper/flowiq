@@ -20,11 +20,23 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.add_column('user_form_submissions', sa.Column('current_address', sa.Text(), nullable=True))
-    op.add_column('user_form_submissions', sa.Column('marital_status', sa.String(), nullable=True))
+    inspector = sa.inspect(op.get_bind())
+    if 'user_form_submissions' not in inspector.get_table_names():
+        return
+    columns = {c['name'] for c in inspector.get_columns('user_form_submissions')}
+    if 'current_address' not in columns:
+        op.add_column('user_form_submissions', sa.Column('current_address', sa.Text(), nullable=True))
+    if 'marital_status' not in columns:
+        op.add_column('user_form_submissions', sa.Column('marital_status', sa.String(), nullable=True))
 
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.drop_column('user_form_submissions', 'marital_status')
-    op.drop_column('user_form_submissions', 'current_address')
+    inspector = sa.inspect(op.get_bind())
+    if 'user_form_submissions' not in inspector.get_table_names():
+        return
+    columns = {c['name'] for c in inspector.get_columns('user_form_submissions')}
+    if 'marital_status' in columns:
+        op.drop_column('user_form_submissions', 'marital_status')
+    if 'current_address' in columns:
+        op.drop_column('user_form_submissions', 'current_address')
