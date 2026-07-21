@@ -109,7 +109,7 @@ export const banksService = {
 
   // Bank Management (CRUD)
   listBanks: () =>
-    runApiCall<BankListResponse>({ method: "GET", url: "/banks" }),
+    runApiCall<BankListResponse>({ method: "GET", url: "/banks/" }),
 
   createBank: (payload: BankPayload) =>
     runApiCall<BankCreateResponse>({ method: "POST", url: "/banks/add", data: payload }),
