@@ -25,7 +25,10 @@ def upgrade() -> None:
     # from whatever AgentCommand model was current at the time, which may
     # already have `instruction` and the attachment columns.
     bind = op.get_bind()
-    columns = {c['name'] for c in sa.inspect(bind).get_columns('agent_commands')}
+    inspector = sa.inspect(bind)
+    if 'agent_commands' not in inspector.get_table_names():
+        return
+    columns = {c['name'] for c in inspector.get_columns('agent_commands')}
 
     if 'query' in columns and 'instruction' not in columns:
         op.alter_column('agent_commands', 'query', new_column_name='instruction')
@@ -38,7 +41,10 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Downgrade schema."""
     bind = op.get_bind()
-    columns = {c['name'] for c in sa.inspect(bind).get_columns('agent_commands')}
+    inspector = sa.inspect(bind)
+    if 'agent_commands' not in inspector.get_table_names():
+        return
+    columns = {c['name'] for c in inspector.get_columns('agent_commands')}
 
     if 'attachment_original_name' in columns:
         op.drop_column('agent_commands', 'attachment_original_name')

@@ -20,7 +20,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    columns = {c['name'] for c in sa.inspect(op.get_bind()).get_columns('banks')}
+    inspector = sa.inspect(op.get_bind())
+    if 'banks' not in inspector.get_table_names():
+        return
+    columns = {c['name'] for c in inspector.get_columns('banks')}
 
     if 'portal_url' not in columns:
         op.add_column('banks', sa.Column('portal_url', sa.String(), nullable=True))
@@ -32,7 +35,10 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Downgrade schema."""
-    columns = {c['name'] for c in sa.inspect(op.get_bind()).get_columns('banks')}
+    inspector = sa.inspect(op.get_bind())
+    if 'banks' not in inspector.get_table_names():
+        return
+    columns = {c['name'] for c in inspector.get_columns('banks')}
 
     if 'portal_password' in columns:
         op.drop_column('banks', 'portal_password')

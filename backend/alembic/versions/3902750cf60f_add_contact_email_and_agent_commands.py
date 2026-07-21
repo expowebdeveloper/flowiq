@@ -29,20 +29,23 @@ def upgrade() -> None:
     """Upgrade schema."""
     bind = op.get_bind()
     inspector = sa.inspect(bind)
-    bank_columns = {c['name'] for c in inspector.get_columns('banks')}
-    bank_indexes = {i['name'] for i in inspector.get_indexes('banks')}
+    table_names = set(inspector.get_table_names())
 
-    if 'contact_email' not in bank_columns:
-        op.add_column('banks', sa.Column('contact_email', sa.String(), nullable=True))
-    if 'ix_banks_contact_email' not in bank_indexes:
-        op.create_index('ix_banks_contact_email', 'banks', ['contact_email'], unique=True)
+    if 'banks' in table_names:
+        bank_columns = {c['name'] for c in inspector.get_columns('banks')}
+        bank_indexes = {i['name'] for i in inspector.get_indexes('banks')}
+
+        if 'contact_email' not in bank_columns:
+            op.add_column('banks', sa.Column('contact_email', sa.String(), nullable=True))
+        if 'ix_banks_contact_email' not in bank_indexes:
+            op.create_index('ix_banks_contact_email', 'banks', ['contact_email'], unique=True)
 
     # agent_commands may already exist: it's a new table whose model is
     # visible to main.py's Base.metadata.create_all(), so on a server that
     # started the app after this model was added, create_all() creates it
     # (with whatever columns the model has *at that time*, which can be
     # ahead of this migration's original shape) before this migration runs.
-    if 'agent_commands' not in inspector.get_table_names():
+    if 'banks' in table_names and 'agent_commands' not in table_names:
         op.create_table(
             'agent_commands',
             sa.Column('id', sa.Integer(), primary_key=True),
@@ -54,25 +57,29 @@ def upgrade() -> None:
             sa.Column('updated_at', sa.DateTime(), nullable=True),
         )
         inspector = sa.inspect(bind)
-    agent_command_indexes = {i['name'] for i in inspector.get_indexes('agent_commands')}
-    if 'ix_agent_commands_id' not in agent_command_indexes:
-        op.create_index('ix_agent_commands_id', 'agent_commands', ['id'])
+        table_names = set(inspector.get_table_names())
+    if 'agent_commands' in table_names:
+        agent_command_indexes = {i['name'] for i in inspector.get_indexes('agent_commands')}
+        if 'ix_agent_commands_id' not in agent_command_indexes:
+            op.create_index('ix_agent_commands_id', 'agent_commands', ['id'])
 
 
 def downgrade() -> None:
     """Downgrade schema."""
     bind = op.get_bind()
     inspector = sa.inspect(bind)
+    table_names = set(inspector.get_table_names())
 
-    if 'agent_commands' in inspector.get_table_names():
+    if 'agent_commands' in table_names:
         agent_command_indexes = {i['name'] for i in inspector.get_indexes('agent_commands')}
         if 'ix_agent_commands_id' in agent_command_indexes:
             op.drop_index('ix_agent_commands_id', table_name='agent_commands')
         op.drop_table('agent_commands')
 
-    bank_columns = {c['name'] for c in inspector.get_columns('banks')}
-    bank_indexes = {i['name'] for i in inspector.get_indexes('banks')}
-    if 'ix_banks_contact_email' in bank_indexes:
-        op.drop_index('ix_banks_contact_email', table_name='banks')
-    if 'contact_email' in bank_columns:
-        op.drop_column('banks', 'contact_email')
+    if 'banks' in table_names:
+        bank_columns = {c['name'] for c in inspector.get_columns('banks')}
+        bank_indexes = {i['name'] for i in inspector.get_indexes('banks')}
+        if 'ix_banks_contact_email' in bank_indexes:
+            op.drop_index('ix_banks_contact_email', table_name='banks')
+        if 'contact_email' in bank_columns:
+            op.drop_column('banks', 'contact_email')

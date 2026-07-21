@@ -21,6 +21,8 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     """Upgrade schema."""
     inspector = sa.inspect(op.get_bind())
+    if 'banks' not in inspector.get_table_names():
+        return
     columns = {c['name'] for c in inspector.get_columns('banks')}
     indexes = {i['name'] for i in inspector.get_indexes('banks')}
 
@@ -39,6 +41,8 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Downgrade schema."""
     inspector = sa.inspect(op.get_bind())
+    if 'banks' not in inspector.get_table_names():
+        return
     columns = {c['name'] for c in inspector.get_columns('banks')}
     indexes = {i['name'] for i in inspector.get_indexes('banks')}
 
