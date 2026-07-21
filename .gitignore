@@ -41,7 +41,6 @@ celerybeat.pid
 Thumbs.db
 
 # IDE
-.vscode/
 .idea/
 *.swp
 *.swo
@@ -62,3 +61,4 @@ temp_interactive_push.bat
 # Frontend and non required the file
 frontend_deploy.sh
 deploy.sh
+.gitignore

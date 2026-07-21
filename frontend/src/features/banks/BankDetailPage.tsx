@@ -159,6 +159,14 @@ export function BankDetailPage() {
     setIsSavingBank(false)
 
     if (result.ok) {
+      if (result.data?.login) {
+        alert(
+          `FlowIQ login created for this bank:\n\n` +
+            `Email: ${result.data.login.email}\n` +
+            `Password: ${result.data.login.password}\n\n` +
+            `Save this now — the password can't be shown again.`,
+        )
+      }
       setIsEditingBank(false)
       fetchBank()
     } else {
