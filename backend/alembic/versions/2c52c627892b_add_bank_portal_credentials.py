@@ -20,13 +20,23 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.add_column('banks', sa.Column('portal_url', sa.String(), nullable=True))
-    op.add_column('banks', sa.Column('portal_username', sa.String(), nullable=True))
-    op.add_column('banks', sa.Column('portal_password', sa.String(), nullable=True))
+    columns = {c['name'] for c in sa.inspect(op.get_bind()).get_columns('banks')}
+
+    if 'portal_url' not in columns:
+        op.add_column('banks', sa.Column('portal_url', sa.String(), nullable=True))
+    if 'portal_username' not in columns:
+        op.add_column('banks', sa.Column('portal_username', sa.String(), nullable=True))
+    if 'portal_password' not in columns:
+        op.add_column('banks', sa.Column('portal_password', sa.String(), nullable=True))
 
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.drop_column('banks', 'portal_password')
-    op.drop_column('banks', 'portal_username')
-    op.drop_column('banks', 'portal_url')
+    columns = {c['name'] for c in sa.inspect(op.get_bind()).get_columns('banks')}
+
+    if 'portal_password' in columns:
+        op.drop_column('banks', 'portal_password')
+    if 'portal_username' in columns:
+        op.drop_column('banks', 'portal_username')
+    if 'portal_url' in columns:
+        op.drop_column('banks', 'portal_url')
