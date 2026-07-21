@@ -9,8 +9,11 @@ import {
   CheckCircle2,
   ChevronDown,
   CreditCard,
+  Download,
+  Eye,
   FileText,
   FileWarning,
+  FolderOpen,
   Landmark,
   Loader2,
   Mail,
@@ -29,6 +32,13 @@ import { PageHeader } from "@/components/shared/PageHeader"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 import { loanTypeLabel } from "@/features/loans/loanTypeMeta"
 import { HOME_LOAN_FIELD_LABELS } from "@/features/loan-apply/HomeLoanDetailsStep"
@@ -39,6 +49,7 @@ import { GOLD_LOAN_FIELD_LABELS } from "@/features/loan-apply/GoldLoanDetailsSte
 import {
   loanApplyService,
   type LeadActivityEvent,
+  type LeadDocument,
   type LoanApplyResult,
   type LoanRequirement,
 } from "@/services/loanApplyService"
@@ -373,6 +384,7 @@ function LeadDetail({
   const categoryKey = LOAN_TYPE_TO_CATEGORY_KEY[lead.loan_type]
   const categoryFields = categoryKey ? requirements[categoryKey]?.mandatory_fields ?? [] : []
   const hasExtraDetails = lead.extra_loan_details && Object.keys(lead.extra_loan_details).length > 0
+  const [documentsOpen, setDocumentsOpen] = useState(false)
 
   const documentFieldEntries = Object.entries(lead.extracted_data ?? {}).filter(([, value]) => Boolean(value))
   const hasOcrData = documentFieldEntries.length > 0
@@ -389,10 +401,15 @@ function LeadDetail({
           </h2>
           <p className="text-sm text-muted-foreground">{lead.email}</p>
         </div>
-        <Badge variant={statusMeta.variant} className="ml-auto">
-          {statusMeta.label}
-        </Badge>
+        <div className="ml-auto flex items-center gap-2">
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setDocumentsOpen(true)}>
+            <FolderOpen className="size-4" /> Documents
+          </Button>
+          <Badge variant={statusMeta.variant}>{statusMeta.label}</Badge>
+        </div>
       </div>
+
+      <LeadDocumentsDialog leadId={lead.id} open={documentsOpen} onOpenChange={setDocumentsOpen} />
 
       <div className="space-y-4">
         <LeadPipelineCard leadId={lead.id} />
@@ -561,6 +578,179 @@ function LeadPipelineCard({ leadId }: { leadId: string }) {
         )}
       </CardContent>
     </Card>
+  )
+}
+
+const VERIFIED_META: Record<"true" | "false" | "null", { label: string; variant: "success" | "warning" | "secondary" }> = {
+  true: { label: "Verified", variant: "success" },
+  false: { label: "Unreadable", variant: "warning" },
+  null: { label: "Unmatched", variant: "secondary" },
+}
+
+/**
+ * Adapter so LeadDocumentsDialog can be reused wherever a caller has some id
+ * that resolves (server-side) to a UserFormSubmission's documents — a broker
+ * viewing a lead directly (id = submission_id, via loanApplyService) or a
+ * bank viewing the lead behind one of its notifications (id =
+ * notification_id, via bankNotificationService, since a bank has no broker
+ * JWT to call the submission_id-keyed routes with — see
+ * banks.notification_routes for the server-side scoping).
+ */
+interface DocumentsSource {
+  getDocuments: (id: string) => ReturnType<typeof loanApplyService.getDocuments>
+  downloadDocument: (id: string, documentId: string, filename: string) => Promise<void>
+  viewDocument: (id: string, documentId: string) => Promise<void>
+}
+
+/**
+ * Every document a lead has emailed in so far, across all of their replies —
+ * fetched fresh each time the lead's profile is opened, so it naturally
+ * shows 5 files today and all of them once the applicant finishes sending
+ * the rest, with no separate step needed on this page to "pick up" the new
+ * ones (loan_apply.document_processing persists each attachment as it's
+ * received; this just lists whatever's in the table right now).
+ */
+export function LeadDocumentsDialog({
+  leadId,
+  open,
+  onOpenChange,
+  source = loanApplyService,
+}: {
+  leadId: string
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  source?: DocumentsSource
+}) {
+  const [documents, setDocuments] = useState<LeadDocument[] | null>(null)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [downloadingId, setDownloadingId] = useState<string | null>(null)
+  const [viewingId, setViewingId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    setDocuments(null)
+    setErrorMessage(null)
+    source.getDocuments(leadId).then((res) => {
+      if (cancelled) return
+      if (res.ok && res.data) {
+        setDocuments(res.data)
+      } else {
+        setErrorMessage(res.errorMessage ?? "Failed to load documents")
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [leadId, open, source])
+
+  async function handleDownload(doc: LeadDocument) {
+    setDownloadingId(doc.id)
+    try {
+      await source.downloadDocument(leadId, doc.id, doc.filename)
+    } catch {
+      setErrorMessage(`Failed to download ${doc.filename}`)
+    } finally {
+      setDownloadingId(null)
+    }
+  }
+
+  async function handleView(doc: LeadDocument) {
+    setViewingId(doc.id)
+    try {
+      await source.viewDocument(leadId, doc.id)
+    } catch {
+      setErrorMessage(`Failed to open ${doc.filename}`)
+    } finally {
+      setViewingId(null)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <FolderOpen className="size-4" /> Documents
+            {documents && documents.length > 0 && (
+              <span className="text-xs font-normal text-muted-foreground">
+                {documents.length} file{documents.length === 1 ? "" : "s"}
+              </span>
+            )}
+          </DialogTitle>
+          <DialogDescription>Every document this applicant has sent in so far.</DialogDescription>
+        </DialogHeader>
+
+        {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
+
+        {!documents && !errorMessage && (
+          <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" /> Loading documents…
+          </div>
+        )}
+
+        {documents && documents.length === 0 && (
+          <p className="py-2 text-sm text-muted-foreground">No documents received yet.</p>
+        )}
+
+        {documents && documents.length > 0 && (
+          <div className="max-h-[60vh] divide-y divide-border overflow-y-auto rounded-lg border border-border">
+            {documents.map((doc) => {
+              const verifiedMeta = VERIFIED_META[String(doc.content_verified) as "true" | "false" | "null"]
+              const isDownloading = downloadingId === doc.id
+              const isViewing = viewingId === doc.id
+              return (
+                <div key={doc.id} className="flex items-center gap-3 p-3">
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                    <FileText className="size-4" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="truncate text-sm font-medium">{doc.filename}</span>
+                      {doc.label && (
+                        <Badge variant="outline" className="shrink-0">
+                          {doc.label}
+                        </Badge>
+                      )}
+                      <Badge variant={verifiedMeta.variant} className="shrink-0">
+                        {verifiedMeta.label}
+                      </Badge>
+                    </div>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{formatDate(doc.uploaded_at)}</p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="size-8"
+                      disabled={isViewing}
+                      onClick={() => handleView(doc)}
+                      aria-label={`View ${doc.filename}`}
+                    >
+                      {isViewing ? <Loader2 className="size-3.5 animate-spin" /> : <Eye className="size-3.5" />}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="size-8"
+                      disabled={isDownloading}
+                      onClick={() => handleDownload(doc)}
+                      aria-label={`Download ${doc.filename}`}
+                    >
+                      {isDownloading ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <Download className="size-3.5" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   )
 }
 

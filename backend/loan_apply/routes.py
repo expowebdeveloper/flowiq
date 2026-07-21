@@ -1,13 +1,15 @@
 import json
 import logging
+from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi.responses import FileResponse
 
 from auth import require_broker
-from db import BankDecision, UserFormSubmission, get_session
+from db import BankDecision, LoanApplyDocument, UserFormSubmission, get_session
 from .activity import get_lead_activity
 from .agent import send_requirements_email
-from .schemas import BankDecisionOut, LoanApplyCreate, LoanApplyOut
+from .schemas import BankDecisionOut, LoanApplyCreate, LoanApplyDocumentOut, LoanApplyOut
 
 logger = logging.getLogger(__name__)
 
@@ -193,5 +195,72 @@ def get_loan_apply_submission(submission_id: str, current_user: dict = Depends(r
             .all()
         )
         return _to_out(record, decisions)
+    finally:
+        session.close()
+
+
+@router.get("/{submission_id}/documents", response_model=list[LoanApplyDocumentOut])
+def list_loan_apply_documents(submission_id: str, current_user: dict = Depends(require_broker)):
+    """
+    Every document attachment received from this lead across all of their
+    replies so far — accumulates automatically as loan_apply.document_processing
+    persists each new LoanApplyDocument row on every reply, so this list
+    naturally grows from e.g. 5 documents to all 10 as the applicant sends
+    the rest, with no separate "finalize" step.
+    """
+    session = get_session()
+    try:
+        if not session.get(UserFormSubmission, submission_id):
+            raise HTTPException(status_code=404, detail="Submission not found")
+        docs = (
+            session.query(LoanApplyDocument)
+            .filter(LoanApplyDocument.submission_id == submission_id)
+            .order_by(LoanApplyDocument.uploaded_at.asc())
+            .all()
+        )
+        return [
+            LoanApplyDocumentOut(
+                id=d.id,
+                filename=d.filename,
+                content_type=d.content_type,
+                label=d.label,
+                content_verified=d.content_verified,
+                uploaded_at=d.uploaded_at.isoformat(),
+            )
+            for d in docs
+        ]
+    finally:
+        session.close()
+
+
+@router.get("/{submission_id}/documents/{document_id}")
+def download_loan_apply_document(
+    submission_id: str,
+    document_id: str,
+    disposition: str = "attachment",
+    current_user: dict = Depends(require_broker),
+):
+    """
+    Serves one document a lead sent in, mirroring
+    banks.applications.download_application_document. disposition=inline
+    (vs. the default "attachment") tells the browser to render the file —
+    image/PDF — in place instead of forcing a save-as, used by the lead
+    profile's document "view" action; download still uses "attachment" so
+    it always saves regardless of file type.
+    """
+    if disposition not in ("attachment", "inline"):
+        raise HTTPException(status_code=400, detail="disposition must be 'attachment' or 'inline'")
+
+    session = get_session()
+    try:
+        doc = session.get(LoanApplyDocument, document_id)
+        if not doc or doc.submission_id != submission_id:
+            raise HTTPException(status_code=404, detail="Document not found")
+
+        file_path = Path(doc.saved_path)
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail="File not found on disk")
+
+        return FileResponse(str(file_path), filename=doc.filename, content_disposition_type=disposition)
     finally:
         session.close()

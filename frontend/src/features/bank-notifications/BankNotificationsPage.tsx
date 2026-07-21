@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Bell, Check, FileText, Loader2, X } from "lucide-react"
+import { Bell, Check, FileText, FolderOpen, Loader2, X } from "lucide-react"
 import { PageHeader } from "@/components/shared/PageHeader"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -14,6 +14,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { useBankNotifications } from "@/contexts/BankNotificationsContext"
 import { loanTypeLabel } from "@/features/loans/loanTypeMeta"
+import { LeadDocumentsDialog } from "@/features/leads/LeadsPage"
 import { bankNotificationService } from "@/services/bankNotificationService"
 import type { BankNotification, BankDecisionStatus } from "@/services/bankNotificationService"
 
@@ -58,7 +59,7 @@ export function BankNotificationsPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <PageHeader title="Notifications" description="New leads matching the loan types you offer." />
+      <PageHeader title="Customer" description="New leads matching the loan types you offer." />
 
       {loading && (
         <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
@@ -95,6 +96,8 @@ function NotificationCard({
   const isUnread = !notification.read_at
   const [isLoadingPdf, setIsLoadingPdf] = useState(false)
   const [pdfError, setPdfError] = useState<string | null>(null)
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null)
+  const [documentsOpen, setDocumentsOpen] = useState(false)
   const [pendingStatus, setPendingStatus] = useState<BankDecisionStatus | null>(null)
   const [remarks, setRemarks] = useState("")
   const [isSubmittingDecision, setIsSubmittingDecision] = useState(false)
@@ -107,14 +110,22 @@ function NotificationCard({
     const result = await bankNotificationService.getPdf(notification.id)
     setIsLoadingPdf(false)
     if (result.ok && result.data) {
-      const url = URL.createObjectURL(result.data)
-      window.open(url, "_blank", "noopener,noreferrer")
-      // Revoke once the new tab has had a chance to load the blob.
-      setTimeout(() => URL.revokeObjectURL(url), 30_000)
+      setPdfUrl(URL.createObjectURL(result.data))
       if (isUnread) onRead()
     } else {
       setPdfError(result.errorMessage ?? "Failed to load PDF")
     }
+  }
+
+  function closePdfDialog() {
+    if (pdfUrl) URL.revokeObjectURL(pdfUrl)
+    setPdfUrl(null)
+  }
+
+  function handleViewDocuments(event: React.MouseEvent) {
+    event.stopPropagation()
+    setDocumentsOpen(true)
+    if (isUnread) onRead()
   }
 
   function openDecisionDialog(event: React.MouseEvent, status: BankDecisionStatus) {
@@ -192,6 +203,10 @@ function NotificationCard({
             )}
             View PDF
           </Button>
+          <Button type="button" variant="outline" size="sm" onClick={handleViewDocuments}>
+            <FolderOpen className="size-4" />
+            Documents
+          </Button>
           <div className="flex gap-1.5">
             <Button
               type="button"
@@ -256,6 +271,28 @@ function NotificationCard({
           )}
         </DialogContent>
       </Dialog>
+
+      <Dialog open={pdfUrl !== null} onOpenChange={(open) => !open && closePdfDialog()}>
+        <DialogContent
+          className="flex h-screen max-h-screen w-screen max-w-none flex-col rounded-none border-0 p-4 sm:rounded-none"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <DialogHeader>
+            <DialogTitle>{notification.applicant_name ?? "Applicant"} — loan application</DialogTitle>
+            <DialogDescription>{notification.applicant_email}</DialogDescription>
+          </DialogHeader>
+          {pdfUrl && (
+            <iframe src={pdfUrl} title="Loan application PDF" className="min-h-0 flex-1 rounded-md border border-border" />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <LeadDocumentsDialog
+        leadId={notification.id}
+        open={documentsOpen}
+        onOpenChange={setDocumentsOpen}
+        source={bankNotificationService}
+      />
     </Card>
   )
 }

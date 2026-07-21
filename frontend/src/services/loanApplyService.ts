@@ -1,4 +1,4 @@
-import { runApiCall } from "./apiClient"
+import { apiClient, runApiCall } from "./apiClient"
 
 export interface LoanApplyPayload {
   first_name: string
@@ -80,6 +80,15 @@ export interface BankDecisionEvent {
 
 export type LeadActivityEvent = LeadCreatedEvent | DocumentsProcessedEvent | EmailEvent | BankDecisionEvent
 
+export interface LeadDocument {
+  id: string
+  filename: string
+  content_type: string | null
+  label: string | null
+  content_verified: boolean | null
+  uploaded_at: string
+}
+
 export const loanApplyService = {
   submit: (payload: LoanApplyPayload) =>
     runApiCall<LoanApplyResult>({
@@ -117,4 +126,52 @@ export const loanApplyService = {
       method: "GET",
       url: `/loan-apply/${encodeURIComponent(id)}/activity`,
     }),
+
+  getDocuments: (id: string) =>
+    runApiCall<LeadDocument[]>({
+      method: "GET",
+      url: `/loan-apply/${encodeURIComponent(id)}/documents`,
+    }),
+
+  /**
+   * Downloads one document and saves it via the browser, rather than
+   * window.open()-ing the raw API URL — that would hit the endpoint with no
+   * Authorization header (apiClient's Bearer token is attached by an axios
+   * interceptor, not something a plain <a href> or new tab carries), which
+   * require_broker would reject with a 401.
+   */
+  async downloadDocument(submissionId: string, documentId: string, filename: string) {
+    const response = await apiClient.get(
+      `/loan-apply/${encodeURIComponent(submissionId)}/documents/${encodeURIComponent(documentId)}`,
+      { responseType: "blob" },
+    )
+    const blobUrl = window.URL.createObjectURL(response.data as Blob)
+    const link = document.createElement("a")
+    link.href = blobUrl
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(blobUrl)
+  },
+
+  /**
+   * Opens one document in a new tab for previewing (image/PDF) instead of
+   * forcing a save-as — same auth problem as downloadDocument (a plain
+   * window.open(apiUrl) carries no Authorization header), so this fetches
+   * the blob first and opens an object URL instead. Passes
+   * disposition=inline so the backend's Content-Disposition header doesn't
+   * force a download regardless of how the tab is opened. The object URL is
+   * intentionally not revoked here (unlike downloadDocument's) — revoking
+   * immediately would blank the tab before it finishes loading the file;
+   * it's cleaned up when the browser tab/blob is later garbage collected.
+   */
+  async viewDocument(submissionId: string, documentId: string) {
+    const response = await apiClient.get(
+      `/loan-apply/${encodeURIComponent(submissionId)}/documents/${encodeURIComponent(documentId)}`,
+      { responseType: "blob", params: { disposition: "inline" } },
+    )
+    const blobUrl = window.URL.createObjectURL(response.data as Blob)
+    window.open(blobUrl, "_blank", "noopener,noreferrer")
+  },
 }

@@ -6,7 +6,6 @@ export type LeadStageKey =
   | "with_banks"
   | "offer_with_docs"
   | "offers"
-  | "acceptance"
   | "reject"
 
 export interface LeadStageDef {
@@ -21,7 +20,6 @@ export const LEAD_STAGE_DEFS: LeadStageDef[] = [
   { key: "with_banks", label: "With banks", description: "Documents verified, synced to banks" },
   { key: "offer_with_docs", label: "Offer with docs", description: "A bank wants to offer but needs more documents to verify" },
   { key: "offers", label: "Offers", description: "A bank has made an offer on the loan application" },
-  { key: "acceptance", label: "Acceptance", description: "Loan approved" },
   { key: "reject", label: "Reject", description: "Every responding bank rejected the application" },
 ]
 
@@ -33,14 +31,6 @@ export const LEAD_STAGE_DEFS: LeadStageDef[] = [
  * becomes "documents_complete" (see backend/loan_apply/document_processing.py),
  * and BankDecision.status is only ever "offer" | "offer_more_documents" |
  * "rejected".
- *
- * "Acceptance" (loan approved) has no backing data yet — there's no
- * applicant/broker action anywhere that confirms an offer was accepted, only
- * the bank-side "offer" decision — so stageOf() can never actually return
- * "acceptance" today. It stays defined (and last in LEAD_STAGE_DEFS, right
- * before Reject) so the dashboard card and Leads filter are ready the moment
- * a real acceptance signal is added; until then every "offer" lands in
- * "offers".
  *
  * Shared by the dashboard's Pipeline by stage widget and the Leads page's
  * stage filter so the two never disagree about which bucket a lead is in.

@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from "react-router-dom"
-import { ArrowLeft, LogOut, Moon, Sun } from "lucide-react"
+import { ArrowLeft, Bell, LogOut, Moon, Sun } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
@@ -12,13 +12,16 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useAuth } from "@/contexts/AuthContext"
 import { useTheme } from "@/contexts/ThemeContext"
+import { useBankNotifications } from "@/contexts/BankNotificationsContext"
 import { navItems } from "@/config/navigation"
 
 export function Topbar() {
   const { user, email, logout } = useAuth()
   const { theme, toggleTheme } = useTheme()
+  const { unreadCount } = useBankNotifications()
   const location = useLocation()
   const navigate = useNavigate()
+  const isBank = user?.role === "bank"
 
   const current = navItems.find(
     (item) => item.path === location.pathname || (item.path !== "/" && location.pathname.startsWith(item.path)),
@@ -51,6 +54,23 @@ export function Topbar() {
         <h1 className="text-sm font-semibold">{current?.label ?? "Dashboard"}</h1>
         <p className="text-xs text-muted-foreground">{current?.description}</p>
       </div>
+
+      {isBank && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="relative"
+          onClick={() => navigate("/notifications")}
+          aria-label={`Customer notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
+        >
+          <Bell className="size-4" />
+          {unreadCount > 0 && (
+            <span className="absolute right-1 top-1 flex size-4 items-center justify-center rounded-full bg-destructive text-[10px] font-medium text-destructive-foreground">
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </span>
+          )}
+        </Button>
+      )}
 
       <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label="Toggle theme">
         {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}

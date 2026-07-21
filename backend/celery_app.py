@@ -38,6 +38,16 @@ celery.conf.update(
             "task": "poll_loan_applicant_replies",
             "schedule": 60.0,
         },
+        # Checked every 60s (not every 10 minutes) so a lead crossing the
+        # 10-minute-since-last-activity threshold is caught promptly rather
+        # than up to ~10 minutes late — the per-lead 10-minute spacing and
+        # 3-reminder cap are enforced inside send_missing_document_reminders
+        # itself by comparing each submission's own timestamps, not by this
+        # schedule's interval.
+        "send-missing-document-reminders-every-60s": {
+            "task": "send_missing_document_reminders",
+            "schedule": 60.0,
+        },
     },
 )
 
@@ -309,7 +319,7 @@ def poll_loan_applicant_replies():
         is_applicant_reply_processed,
     )
     from db import mark_applicant_reply_processed, release_dispatch_claim
-    from loan_apply.agent import extract_application_id
+    from loan_apply.agent import extract_candidate_codes
 
     session = get_session()
     try:
@@ -363,8 +373,20 @@ def poll_loan_applicant_replies():
                 has_attachment = any(
                     p.get("filename") for p in meta.get("payload", {}).get("parts", []) or []
                 )
-                short_code = extract_application_id(subject_header)
-                submission_id = short_code_map.get(short_code) if short_code else None
+                # Tries the strict [application id: ...] tag first, then
+                # falls back to any bare 8-char token in the subject (an
+                # applicant typing/pasting just the code without brackets) —
+                # see extract_candidate_codes. A candidate only counts once
+                # it's confirmed against a real submission's short_code;
+                # nothing here trusts an unverified 8-char string on its own.
+                submission_id = next(
+                    (
+                        short_code_map[code]
+                        for code in extract_candidate_codes(subject_header)
+                        if code in short_code_map
+                    ),
+                    None,
+                )
 
                 if submission_id and has_attachment:
                     with_id.append((m["id"], sender_email, submission_id))
@@ -413,6 +435,141 @@ def poll_loan_applicant_replies():
             results.append({"mailbox": mailbox_email, "status": "error", "error": str(e)})
 
     return results
+
+
+REMINDER_INTERVAL_MINUTES = 10
+
+
+@celery.task(name="send_missing_document_reminders")
+def send_missing_document_reminders():
+    """
+    Celery Beat task — checked every 60s (see the schedule entry above), but
+    only acts on a submission once ~REMINDER_INTERVAL_MINUTES has passed
+    since its last activity (documents_processed_at, or last_reminder_sent_at
+    once a reminder has gone out), so each lead is nudged roughly every 10
+    minutes rather than every 60 seconds.
+
+    For every UserFormSubmission with documents_status == "documents_incomplete":
+      - if reminder_count >= MAX_DOCUMENT_REMINDERS: skip — the applicant has
+        already had all 3 automated nudges; from here it's on the broker to
+        follow up directly, per the product decision behind this feature.
+      - if not enough time has passed since the last activity: skip.
+      - otherwise: send reminder #(reminder_count + 1), bump reminder_count
+        and last_reminder_sent_at. If that reminder was the 3rd (i.e.
+        reminder_count now == MAX_DOCUMENT_REMINDERS), also emit an
+        agent_activity "info" event flagging the lead for manual follow-up,
+        so it's visible in the AI Activity feed / this lead's own activity
+        log without needing new UI.
+
+    reminder_count is reset to 0 by document_processing.process_loan_applicant_reply
+    whenever a new reply comes in, so an applicant who's still actively (if
+    slowly) responding never gets starved of reminders by an earlier partial
+    reply's count.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from agent_activity import emit
+    from db import UserFormSubmission, get_session
+    from loan_apply.agent import MAX_DOCUMENT_REMINDERS, send_document_reminder_email
+    from loan_apply.document_processing import find_missing_documents
+    from loan_apply.requirements import get_required_documents
+
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=REMINDER_INTERVAL_MINUTES)
+
+    session = get_session()
+    try:
+        candidates = (
+            session.query(UserFormSubmission)
+            .filter(UserFormSubmission.documents_status == "documents_incomplete")
+            .filter(UserFormSubmission.reminder_count < MAX_DOCUMENT_REMINDERS)
+            .all()
+        )
+        due = []
+        for submission in candidates:
+            last_activity = submission.last_reminder_sent_at or submission.documents_processed_at
+            if last_activity is None:
+                continue
+            if last_activity <= cutoff:
+                due.append(submission.id)
+    finally:
+        session.close()
+
+    sent_count = 0
+    for submission_id in due:
+        session = get_session()
+        try:
+            submission = session.get(UserFormSubmission, submission_id)
+            # Re-check inside the loop: another poll cycle or an inbound
+            # reply could have changed this submission between the query
+            # above and now, since sending each reminder is not batched
+            # inside one transaction.
+            if (
+                not submission
+                or submission.documents_status != "documents_incomplete"
+                or submission.reminder_count >= MAX_DOCUMENT_REMINDERS
+            ):
+                continue
+
+            applicant_name = f"{submission.first_name} {submission.last_name}".strip()
+            applicant_email = submission.email
+            thread_id = submission.thread_id
+            loan_type = submission.loan_type
+            reminder_number = submission.reminder_count + 1
+        finally:
+            session.close()
+
+        info = get_required_documents(loan_type)
+        required_docs = info["general_documents"] + info["category_documents"]
+
+        session = get_session()
+        try:
+            missing_docs = find_missing_documents(session, submission_id, required_docs)
+        finally:
+            session.close()
+
+        if not missing_docs:
+            # Resolved itself between the query above and now (e.g. a reply
+            # landed and finished processing in the meantime) — nothing to remind about.
+            continue
+
+        try:
+            send_document_reminder_email(
+                applicant_name, applicant_email, info["category"], missing_docs,
+                reminder_number=reminder_number, thread_id=thread_id, submission_id=submission_id,
+            )
+        except Exception:
+            emit(
+                "email_agent", "error",
+                f"Failed to send document reminder #{reminder_number} to {applicant_name}",
+                submission_id=submission_id,
+            )
+            continue
+
+        session = get_session()
+        try:
+            submission = session.get(UserFormSubmission, submission_id)
+            submission.reminder_count = reminder_number
+            submission.last_reminder_sent_at = datetime.now(timezone.utc)
+            session.commit()
+        finally:
+            session.close()
+
+        sent_count += 1
+        emit(
+            "email_agent", "info",
+            f"Sent document reminder #{reminder_number}/{MAX_DOCUMENT_REMINDERS} to {applicant_name}",
+            submission_id=submission_id,
+            detail={"missing_documents": [d["document"] for d in missing_docs]},
+        )
+
+        if reminder_number >= MAX_DOCUMENT_REMINDERS:
+            emit(
+                "email_agent", "info",
+                f"Reminder limit reached for {applicant_name} — needs manual follow-up from the broker",
+                submission_id=submission_id,
+            )
+
+    return {"reminders_sent": sent_count, "checked": len(due)}
 
 
 @celery.task(name="auto_poll_emails")
