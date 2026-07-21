@@ -2,16 +2,18 @@ import base64
 from email.mime.text import MIMEText
 
 from auth.oauth import build_gmail_service
-from db import BankAccount, BankLoanRate, LoanApplication, LoanApplicationDocument, User, get_session
+from db import LoanApplication, LoanApplicationDocument, User, get_session
+from loan_recommendation.models import Bank, BankLoanPolicy
 
 
 def notify_bank_of_kyc_completion(application_id: str) -> dict:
     """
-    Emails every bank that offers the applicant's loan_type (via BankLoanRate)
-    a summary of a completed KYC application, sent from the broker's linked
-    Gmail account. Returns a dict describing how many banks were notified vs.
-    skipped (no registered contact email), so the caller can surface a warning
-    without failing the KYC submission itself.
+    Emails every active bank with a loan policy for the applicant's loan_type
+    (via BankLoanPolicy/Bank — the admin-managed Banks table) a summary of a
+    completed KYC application, sent from the broker's linked Gmail account.
+    Returns a dict describing how many banks were notified vs. skipped (no
+    registered contact email), so the caller can surface a warning without
+    failing the KYC submission itself.
     """
     session = get_session()
     try:
@@ -23,13 +25,14 @@ def notify_bank_of_kyc_completion(application_id: str) -> dict:
         if not broker:
             return {"sent": False, "notified_count": 0, "skipped_banks": [], "reason": "Broker account not found."}
 
-        bank_names = [
-            row.bank_name
-            for row in session.query(BankLoanRate.bank_name)
-            .filter(BankLoanRate.loan_type == application.loan_type)
+        banks = (
+            session.query(Bank)
+            .join(BankLoanPolicy, BankLoanPolicy.bank_id == Bank.id)
+            .filter(BankLoanPolicy.loan_type == application.loan_type, Bank.status == "active")
             .distinct()
-        ]
-        if not bank_names:
+            .all()
+        )
+        if not banks:
             return {
                 "sent": False,
                 "notified_count": 0,
@@ -65,14 +68,13 @@ def notify_bank_of_kyc_completion(application_id: str) -> dict:
 
         notified_count = 0
         skipped_banks = []
-        for bank_name in bank_names:
-            bank_account = session.query(BankAccount).filter(BankAccount.bank_name == bank_name).first()
-            if not bank_account:
-                skipped_banks.append(bank_name)
+        for bank in banks:
+            if not bank.contact_email:
+                skipped_banks.append(bank.name)
                 continue
 
             mime = MIMEText(body, "plain")
-            mime["To"] = bank_account.email
+            mime["To"] = bank.contact_email
             mime["From"] = broker.email
             mime["Subject"] = f"KYC completed — {application.applicant_name} ({application.loan_type})"
 
@@ -81,7 +83,7 @@ def notify_bank_of_kyc_completion(application_id: str) -> dict:
                 service.users().messages().send(userId="me", body={"raw": raw}).execute()
                 notified_count += 1
             except Exception:
-                skipped_banks.append(bank_name)
+                skipped_banks.append(bank.name)
 
         reason = None
         if skipped_banks:

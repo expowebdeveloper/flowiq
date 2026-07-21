@@ -40,7 +40,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { cn } from "@/lib/utils"
+import { cn, toTitleCase } from "@/lib/utils"
 import { loanTypeLabel } from "@/features/loans/loanTypeMeta"
 import { HOME_LOAN_FIELD_LABELS } from "@/features/loan-apply/HomeLoanDetailsStep"
 import { PERSONAL_LOAN_FIELD_LABELS } from "@/features/loan-apply/PersonalLoanDetailsStep"
@@ -125,7 +125,7 @@ function formatExtractedValue(key: string, rawValue: string): string {
       return formatCurrency(n)
     }
   }
-  return rawValue
+  return toTitleCase(rawValue)
 }
 
 /** Shows only the last 4 digits of an SSN (e.g. "•••-••-6789") — a lead-management list view has no need to display the full number even though it's stored for the actual application. */
