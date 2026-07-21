@@ -4,7 +4,6 @@ import type { UseFormReturn } from "react-hook-form"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { cn } from "@/lib/utils"
 import {
   Select,
   SelectContent,
@@ -97,15 +96,13 @@ export function MoneyField({ form, name, label, placeholder }: FieldProps & { pl
     <div className="space-y-1.5">
       <Label>{label}</Label>
       <div className="relative">
-        <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-lg text-muted-foreground">
-          ₹
-        </span>
+        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
         <Input
           type="number"
           inputMode="decimal"
           min={0}
           placeholder={placeholder}
-          className={cn(FIELD_SIZE, "pl-9")}
+          className={`${FIELD_SIZE} pl-8`}
           {...form.register(`extra_loan_details.${name}`)}
         />
       </div>

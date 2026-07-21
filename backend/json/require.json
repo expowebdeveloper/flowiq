@@ -77,6 +77,10 @@
         {
           "document": "Gold Valuation Certificate",
           "description": "Certified certificate showing weight and purity valuation of the gold."
+        },
+        {
+          "document": "Annual Income",
+          "description": "Employer-certified statement of annual income, used to verify the annual income declared on the application."
         }
       ]
     },
@@ -93,7 +97,12 @@
           "description": "Price of the vehicle excluding registration, insurance, etc."
         }
       ],
-      "mandatory_documents": []
+      "mandatory_documents": [
+        {
+          "document": "Annual Income",
+          "description": "Employer-certified statement of annual income, used to verify the annual income declared on the application."
+        }
+      ]
     },
     "Home Loan": {
       "mandatory_fields": [
@@ -124,6 +133,10 @@
         {
           "document": "Property Appraisal Report",
           "description": "Licensed appraiser's report establishing the property's market value."
+        },
+        {
+          "document": "Annual Income",
+          "description": "Employer-certified statement of annual income, used to verify the annual income declared on the application."
         }
       ]
     },
@@ -144,6 +157,10 @@
         {
           "document": "Latest 3 Months Salary Slips",
           "description": "Recent pay stubs to verify monthly income."
+        },
+        {
+          "document": "Annual Income",
+          "description": "Employer-certified statement of annual income, used to verify the annual income declared on the application."
         }
       ]
     },

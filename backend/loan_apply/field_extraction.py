@@ -1,6 +1,9 @@
 import re
 
-MONEY_RE = re.compile(r"(?:rs\.?|inr|₹)\s?([\d,]+(?:\.\d+)?)", re.IGNORECASE)
+# \s* (not \s?) between the currency marker and the amount — OCR output commonly
+# has irregular/multiple spaces (e.g. "Rs.  3,00,000.-"), and \s? only tolerated
+# exactly zero or one, silently failing to match anything with two or more.
+MONEY_RE = re.compile(r"(?:rs\.?|inr|₹)\s*([\d,]+(?:\.\d+)?)", re.IGNORECASE)
 GRAMS_RE = re.compile(r"([\d.]+)\s?(?:grams?|gms?|g\b)", re.IGNORECASE)
 CARAT_RE = re.compile(r"\b(1[0-9]|2[0-4])\s?k(?:arat)?\b", re.IGNORECASE)
 
@@ -620,6 +623,54 @@ def extract_property_appraisal_fields(text: str) -> dict:
     return fields
 
 
+# The certified total is stated on its own labeled row ("TOTAL CERTIFIED
+# ANNUAL INCOME: $200,000.00") inside the income breakdown table; "TOTAL
+# (USD)" is a second, looser summary line further down the same letter that
+# repeats the same figure — checked second since "certified" is the more
+# specific/reliable anchor when both are present. "TOTAL Rs." is the
+# equivalent closing row on the India-specific "Annual Income Certificate for
+# Guardians" (Annexure-II Form-A) variant, which states its total in rupees
+# rather than USD — checked last since a bare "total" is the loosest anchor
+# of the three and most likely to appear in unrelated line-item rows too.
+_TOTAL_CERTIFIED_ANNUAL_INCOME_LINE_RE = re.compile(r"total\s*certified\s*annual\s*income", re.IGNORECASE)
+_TOTAL_USD_LINE_RE = re.compile(r"total\s*\(usd\)", re.IGNORECASE)
+_TOTAL_RS_LINE_RE = re.compile(r"total\s*rs\b", re.IGNORECASE)
+_EMPLOYER_NAME_LINE_RE = re.compile(r"name\s*and\s*(?:full\s*)?address\s*of\s*the\s*employer\s*[:\-]?\s*(.+)", re.IGNORECASE)
+
+
+def extract_annual_income_certificate_fields(text: str) -> dict:
+    """
+    Pulls the certified annual income figure and certifying employer's name
+    off an employer-issued annual income certification letter — the figure is
+    what document_processing.process_loan_applicant_reply cross-checks
+    against the applicant's self-reported extra_loan_details.annual_income.
+    Covers both a USD-denominated certificate (_USD_RE, "$...") and an
+    India-specific rupee-denominated one (MONEY_RE, "Rs./INR/₹...") — the
+    two variants of this document seen so far state their total in one
+    currency or the other, never both, so trying both regexes on every
+    anchor line handles either without needing to know the currency upfront.
+    """
+    text = text or ""
+    fields: dict = {}
+
+    for line_re in (_TOTAL_CERTIFIED_ANNUAL_INCOME_LINE_RE, _TOTAL_USD_LINE_RE, _TOTAL_RS_LINE_RE):
+        for line in text.splitlines():
+            if not line_re.search(line):
+                continue
+            amounts = _USD_RE.findall(line) or MONEY_RE.findall(line)
+            if amounts:
+                fields["certified_annual_income"] = amounts[-1].replace(",", "")
+                break
+        if "certified_annual_income" in fields:
+            break
+
+    employer_match = _EMPLOYER_NAME_LINE_RE.search(text)
+    if employer_match:
+        fields["certifying_employer_name"] = employer_match.group(1).strip(" ,")
+
+    return fields
+
+
 DOCUMENT_FIELD_EXTRACTORS = {
     "Government-issued Photo ID": extract_photo_id_fields,
     "Social Security Number (SSN)": extract_ssn_card_fields,
@@ -631,6 +682,7 @@ DOCUMENT_FIELD_EXTRACTORS = {
     "Proof of Down Payment Funds": extract_down_payment_proof_fields,
     "Homeowners Insurance Declaration Page": extract_homeowners_insurance_fields,
     "Property Appraisal Report": extract_property_appraisal_fields,
+    "Annual Income": extract_annual_income_certificate_fields,
 }
 
 

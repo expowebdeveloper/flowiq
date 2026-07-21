@@ -32,6 +32,8 @@ export interface LoanApplyResult extends LoanApplyPayload {
   extracted_data?: Record<string, string> | null
   documents_processed_at?: string | null
   bank_decisions: BankDecisionSummary[]
+  /** true = Annual Income document received and matches the declared amount; false = received but didn't match; null/undefined = not received yet. */
+  annual_income_verified?: boolean | null
 }
 
 export interface RequirementField {

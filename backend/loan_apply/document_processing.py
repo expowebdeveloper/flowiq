@@ -17,7 +17,11 @@ from banks.constants import MAX_DOCUMENT_SIZE
 from banks.notifications import notify_banks_of_new_lead
 from db import LoanApplyDocument, UserFormSubmission, get_session
 from inbound.extraction import extract_parts
-from .agent import send_documents_complete_email, send_missing_documents_email
+from .agent import (
+    send_annual_income_mismatch_email,
+    send_documents_complete_email,
+    send_missing_documents_email,
+)
 from .field_extraction import extract_fields_from_text
 from .requirements import get_required_documents
 
@@ -39,6 +43,22 @@ def _singularize(s: str) -> str:
     substring-match fallback, not general stemming, and a broader rule risks
     collapsing unrelated document names into each other."""
     return re.sub(r"s\b", "", s.strip(), count=1) if s.endswith("s") else s
+
+
+def _normalize_money(value: str) -> str:
+    """
+    Normalizes a money string for an EXACT-match comparison — strips
+    currency symbols/commas/whitespace and trailing ".00"-style zero
+    decimals, so "$200,000.00" (OCR'd from a document) and "200000" (typed
+    into the applicant form) compare equal despite differing only in
+    formatting, while any actual figure difference still fails the match.
+    """
+    cleaned = re.sub(r"[^\d.]", "", value or "")
+    if not cleaned:
+        return ""
+    if "." in cleaned:
+        cleaned = cleaned.rstrip("0").rstrip(".")
+    return cleaned
 
 
 def _match_document_label(filename: str, text: str, required_doc_names: list[str]) -> str | None:
@@ -116,6 +136,8 @@ def process_loan_applicant_reply(mailbox_email: str, sender_email: str, message_
         loan_type = submission.loan_type
         applicant_display_name = f"{submission.first_name} {submission.last_name}"
         existing_extracted = json.loads(submission.extracted_data) if submission.extracted_data else {}
+        extra_loan_details = json.loads(submission.extra_loan_details) if submission.extra_loan_details else {}
+        declared_annual_income = extra_loan_details.get("annual_income")
     finally:
         session.close()
 
@@ -143,6 +165,17 @@ def process_loan_applicant_reply(mailbox_email: str, sender_email: str, message_
 
     merged_fields = dict(existing_extracted)
     processed_docs = []
+    # Set when this reply's "Annual Income" document is structurally a valid
+    # income certification (passed validate_annual_income_certificate) but its
+    # OCR'd certified figure doesn't exactly match what the applicant declared
+    # in extra_loan_details.annual_income at submission time — distinct from
+    # "missing" (no such document was sent at all), since here one WAS sent,
+    # it just doesn't corroborate the declared figure. Drives a dedicated
+    # mismatch email (see send_annual_income_mismatch_email below) instead of
+    # the generic "still missing" one, and forces content_verified=False so
+    # find_missing_documents keeps blocking completion/bank notification the
+    # same way an actually-missing document would.
+    annual_income_mismatch: dict | None = None
 
     session = get_session()
     try:
@@ -181,8 +214,31 @@ def process_loan_applicant_reply(mailbox_email: str, sender_email: str, message_
                 else:
                     content_verified = False
 
+            extracted_this_doc = {}
             if text:
-                merged_fields.update(extract_fields_from_text(info["category"], text, label, ocr_candidates))
+                extracted_this_doc = extract_fields_from_text(info["category"], text, label, ocr_candidates)
+                merged_fields.update(extracted_this_doc)
+
+            # Cross-check only fires once the document has already passed its
+            # own structural validator — an unreadable/wrong document is
+            # already handled by the existing content_verified=False path
+            # above and counted in unclear_count below, so this is strictly
+            # for "looks like a real income certificate, but the number is
+            # wrong" rather than duplicating that handling.
+            if (
+                label == "Annual Income"
+                and content_verified
+                and declared_annual_income not in (None, "")
+                and "certified_annual_income" in extracted_this_doc
+            ):
+                certified_value = extracted_this_doc["certified_annual_income"]
+                if _normalize_money(certified_value) != _normalize_money(str(declared_annual_income)):
+                    content_verified = False
+                    annual_income_mismatch = {
+                        "filename": filename,
+                        "declared": declared_annual_income,
+                        "certified": certified_value,
+                    }
 
             doc = LoanApplyDocument(
                 submission_id=submission_id,
@@ -202,7 +258,12 @@ def process_loan_applicant_reply(mailbox_email: str, sender_email: str, message_
         # Attachments sent THIS reply that didn't match any required document at
         # all — i.e. the applicant did send something, we just couldn't tell what
         # it was (blurry/low-res/wrong crop/etc.), as opposed to not sending it.
-        unclear_count = sum(1 for d in processed_docs if d["label"] is None)
+        # A mismatched Annual Income document DID match a required document (it's
+        # excluded here so it isn't double-counted as "unclear" too).
+        unclear_count = sum(
+            1 for d in processed_docs
+            if d["label"] is None and not (annual_income_mismatch and d["filename"] == annual_income_mismatch["filename"])
+        )
 
         submission = session.get(UserFormSubmission, submission_id)
         submission.extracted_data = json.dumps(merged_fields)
@@ -227,19 +288,42 @@ def process_loan_applicant_reply(mailbox_email: str, sender_email: str, message_
     )
     emit(
         "document_processing",
-        "success" if not (missing_docs or unclear_count) else "info",
+        "success" if not (missing_docs or unclear_count or annual_income_mismatch) else "info",
         f"Verified {len(processed_docs) - unclear_count}/{len(processed_docs)} document(s) from "
         f"{applicant_name} — {len(missing_docs)} still missing/unverified"
-        + (f", {unclear_count} unclear" if unclear_count else ""),
+        + (f", {unclear_count} unclear" if unclear_count else "")
+        + (
+            f", Annual Income mismatch (declared {annual_income_mismatch['declared']}, "
+            f"certified {annual_income_mismatch['certified']})"
+            if annual_income_mismatch else ""
+        ),
         submission_id=submission_id,
         detail={
             "documents": processed_docs,
             "missing_documents": [d["document"] for d in missing_docs],
             "unclear_count": unclear_count,
+            "annual_income_mismatch": annual_income_mismatch,
         },
     )
 
-    if missing_docs or unclear_count:
+    if annual_income_mismatch:
+        try:
+            send_annual_income_mismatch_email(
+                applicant_name, sender_email, loan_category,
+                declared_annual_income=annual_income_mismatch["declared"],
+                thread_id=msg.get("threadId"), in_reply_to_message_id=message_id,
+                submission_id=submission_id,
+            )
+        except Exception:
+            logger.exception(
+                "loan_apply documents: failed to send annual-income-mismatch follow-up to %s", sender_email
+            )
+            emit(
+                "document_processing", "error",
+                f"Failed to send annual-income-mismatch follow-up to {applicant_name}",
+                submission_id=submission_id,
+            )
+    elif missing_docs or unclear_count:
         try:
             send_missing_documents_email(
                 applicant_name, sender_email, loan_category, missing_docs,

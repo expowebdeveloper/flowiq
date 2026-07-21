@@ -45,6 +45,15 @@ class LoanApplyOut(LoanApplyCreate):
     documents_processed_at: Optional[str] = None
     bank_decisions: list[BankDecisionOut] = []
 
+    # True if an "Annual Income" document has been received and its OCR'd
+    # certified figure matches extra_loan_details.annual_income; False if one
+    # was received but didn't match (see
+    # loan_apply.document_processing.process_loan_applicant_reply's
+    # annual_income_mismatch handling); None if no such document has been
+    # received yet. Derived in routes._to_out from the submission's
+    # LoanApplyDocument rows — there's no dedicated column for it.
+    annual_income_verified: Optional[bool] = None
+
     # Overrides LoanApplyCreate.loan_amount's gt=0 constraint, which is a
     # write-side validation rule (a new submission must specify a positive
     # amount) — not valid for read-side output, since submissions made

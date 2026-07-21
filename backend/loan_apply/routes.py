@@ -27,7 +27,26 @@ def get_requirements():
         return {}
 
 
-def _to_out(record: UserFormSubmission, decisions: list[BankDecision] = ()) -> LoanApplyOut:
+def _annual_income_verified(session, submission_id: str) -> bool | None:
+    """
+    True if the most recently received "Annual Income" document passed its
+    content_verified check (structurally valid AND its certified figure
+    matched extra_loan_details.annual_income — see
+    loan_apply.document_processing.process_loan_applicant_reply); False if
+    one was received but failed; None if none has been received yet. Only
+    the latest one counts, so a corrected resend after a mismatch clears the
+    earlier failure once it verifies.
+    """
+    doc = (
+        session.query(LoanApplyDocument)
+        .filter(LoanApplyDocument.submission_id == submission_id, LoanApplyDocument.label == "Annual Income")
+        .order_by(LoanApplyDocument.uploaded_at.desc())
+        .first()
+    )
+    return doc.content_verified if doc else None
+
+
+def _to_out(session, record: UserFormSubmission, decisions: list[BankDecision] = ()) -> LoanApplyOut:
     return LoanApplyOut(
         id=record.id,
         first_name=record.first_name,
@@ -55,6 +74,7 @@ def _to_out(record: UserFormSubmission, decisions: list[BankDecision] = ()) -> L
             )
             for d in decisions
         ],
+        annual_income_verified=_annual_income_verified(session, record.id),
     )
 
 
@@ -113,7 +133,7 @@ def submit_loan_apply(payload: LoanApplyCreate, background_tasks: BackgroundTask
         session.add(record)
         session.commit()
         session.refresh(record)
-        out = _to_out(record)
+        out = _to_out(session, record)
     finally:
         session.close()
 
@@ -158,7 +178,7 @@ def list_loan_apply_submissions(current_user: dict = Depends(require_broker)):
             )
             for d in decision_rows:
                 decisions_by_submission.setdefault(d.submission_id, []).append(d)
-        return [_to_out(r, decisions_by_submission.get(r.id, [])) for r in records]
+        return [_to_out(session, r, decisions_by_submission.get(r.id, [])) for r in records]
     finally:
         session.close()
 
@@ -194,7 +214,7 @@ def get_loan_apply_submission(submission_id: str, current_user: dict = Depends(r
             .order_by(BankDecision.decided_at.desc())
             .all()
         )
-        return _to_out(record, decisions)
+        return _to_out(session, record, decisions)
     finally:
         session.close()
 
