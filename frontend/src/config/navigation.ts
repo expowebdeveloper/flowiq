@@ -6,7 +6,6 @@ import {
   ListChecks,
   Settings,
   Building2,
-  ClipboardCheck,
   UserPlus,
   Users,
 } from "lucide-react"
@@ -29,7 +28,6 @@ export const navItems: NavItem[] = [
   { label: "AI Activity", path: "/ai-activity", icon: Activity, description: "Live AI background processing", brokerOnly: true },
   { label: "Banks", path: "/banks", icon: Building2, description: "Manage banks & policies", brokerOnly: true },
   { label: "Loan Type Configuration", path: "/loan-requirements", icon: ListChecks, description: "Agent instructions per loan type", brokerOnly: true },
-  { label: "Verify JSON", path: "/verify-json", icon: ClipboardCheck, description: "Validate application JSON", brokerOnly: true },
   { label: "Loan Apply", path: "/loan-apply", icon: UserPlus, description: "Submit applicant details" },
   { label: "Settings", path: "/settings", icon: Settings, description: "Account & API config" },
 ]
