@@ -31,6 +31,14 @@ export function BankCreatePage() {
     setIsSaving(false)
 
     if (result.ok && result.data?.bank_id) {
+      if (result.data.login) {
+        alert(
+          `Bank created. FlowIQ login for this bank:\n\n` +
+            `Email: ${result.data.login.email}\n` +
+            `Password: ${result.data.login.password}\n\n` +
+            `Save this now — the password can't be shown again.`,
+        )
+      }
       navigate(`/banks/${result.data.bank_id}`)
     } else {
       alert(result.errorMessage ?? "Error creating bank")
